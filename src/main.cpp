@@ -8,8 +8,11 @@ nixiDriver NixiClock(4, 5, 2);
 StaticJsonDocument<500> doc;
 HTTPClient http;
 
-const char *ssid = "UPC3442387";
-const char *password = "Ufppvydmk8mw";
+//const char *ssid = "UPC3442387";
+//const char *password = "Ufppvydmk8mw";
+
+const char *ssid = "MikroTik-9CBB75";
+const char *password = "";
 
 void setup()
 {
@@ -32,7 +35,7 @@ void loop()
   http.begin("http://worldtimeapi.org/api/timezone/Europe/Berlin.json"); //Specify the URL
   int httpCode = http.GET();
   Serial.println("TEST"); //Make the request
-  delay(5000);
+  
 
   if (httpCode > 0)
   { //Check for the returning code
@@ -82,6 +85,8 @@ void loop()
     Serial.println((uint8_t)minute1buff[0] - '0');
     Serial.println("Minute2");
     Serial.println((uint8_t)minute2buff[0] - '0');
+
+    delay(10000);
   }
 
   else

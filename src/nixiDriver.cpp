@@ -18,32 +18,36 @@ uint8_t nixiDriver::writeSegment(uint8_t number, uint8_t segment)
         this->nixiShift.writeBit(5, truthTableNumber[1]);
         this->nixiShift.writeBit(6, truthTableNumber[2]);
         this->nixiShift.writeBit(7, truthTableNumber[3]);
+        free(truthTableNumber);
         break;
     case 2:
         this->nixiShift.writeBit(0, truthTableNumber[0]);
         this->nixiShift.writeBit(1, truthTableNumber[1]);
         this->nixiShift.writeBit(2, truthTableNumber[2]);
         this->nixiShift.writeBit(3, truthTableNumber[3]);
+        free(truthTableNumber);
         break;
     case 3:
         this->nixiShift.writeBit(8, truthTableNumber[0]);
         this->nixiShift.writeBit(9, truthTableNumber[1]);
         this->nixiShift.writeBit(10, truthTableNumber[2]);
         this->nixiShift.writeBit(11, truthTableNumber[3]);
+        free(truthTableNumber);
         break;
     case 4:
         this->nixiShift.writeBit(12, truthTableNumber[0]);
         this->nixiShift.writeBit(13, truthTableNumber[1]);
         this->nixiShift.writeBit(14, truthTableNumber[2]);
         this->nixiShift.writeBit(15, truthTableNumber[3]);
-
+        free(truthTableNumber);
         break;
 
     default:
+        free(truthTableNumber);
         return 0;
         break;
     }
-
+    free(truthTableNumber);
     return 1;
 }
 
