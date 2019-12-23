@@ -5,9 +5,14 @@
 #include <ArduinoOTA.h>
 
 StaticJsonDocument<500> doc;
+StaticJsonDocument<5000> docWeather;
+
 nixiDriver NixiClock(4, 5, 2);
 
 HTTPClient http;
+HTTPClient httpWeather;
+
+int timeOld = 0;
 
 //const char *ssid = "UPC3442387";
 //const char *password = "Ufppvydmk8mw";
@@ -23,6 +28,9 @@ char houre2buff[2];
 char minute1buff[2];
 char minute2buff[2];
 
+char forecastTime1buff;
+char forecastTime2buff;
+
 void setup()
 {
 
@@ -37,7 +45,7 @@ void setup()
     ESP.restart();
   }
 
-// Hostname defaults to esp3232-[MAC]
+  // Hostname defaults to esp3232-[MAC]
   ArduinoOTA.setHostname("OTA ESP32");
 
   // No authentication by default
@@ -80,19 +88,18 @@ void setup()
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
-delay(2000);
+  //NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
+  //delay(2000);
 }
 
 void loop()
-{ ArduinoOTA.handle();
- 
-  
+{
+  ArduinoOTA.handle();
+
   http.begin("http://worldtimeapi.org/api/timezone/Europe/Berlin.json"); //Specify the URL
-  int httpCode = http.GET();
-  //Serial.println(http.getString()); //Make the request
-  
-  if (httpCode > 0)
+  int httpCodeTime = http.GET();
+
+  if (httpCodeTime > 0)
   { //Check for the returning code
 
     // Deserialize the JSON document
@@ -108,8 +115,12 @@ void loop()
 
     //Get Time
     const char *date = doc["datetime"]; //Get current time
-    Serial.println(date);
 
+    //Get Time
+    /* JsonArray array = docWeather.as<JsonArray>();
+    const char *weather = array[0]["main"]; //Get current time
+    Serial.println(weather);
+ */
     memcpy(houre1buff, &date[11], 1);
     houre1buff[1] = '\0';
 
@@ -136,8 +147,9 @@ void loop()
     Serial.println((uint8_t)houre2buff[0] - '0');
     Serial.println("Minute1");
     Serial.println((uint8_t)minute1buff[0] - '0');
-    Serial.println("Minute2"); 
+    Serial.println("Minute2");
     Serial.println((uint8_t)minute2buff[0] - '0');
+
     delay(2000);
   }
 
@@ -146,5 +158,34 @@ void loop()
     Serial.println("Error on HTTP request");
   }
 
-  
+  httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=2&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
+  int httpCodeWeather = httpWeather.GET();
+  Serial.println(httpCodeWeather); //Make the request
+
+  DeserializationError errorWeather = deserializeJson(docWeather, httpWeather.getString());
+
+  if (errorWeather)
+  {
+    Serial.print(F("deserializeJson() from weather failed: "));
+    Serial.println(errorWeather.c_str());
+    delay(2000);
+  }
+
+  const char *forecastTime1 = docWeather["list"][0]["dt_txt"]; //Get current temp
+  const int tempTime1 = docWeather["list"][0]["main"]["temp"]; //Get current time forecast
+
+  NixiClock.writeSegment(forecastTime1[12] - '0', 2);
+  NixiClock.writeSegment(9, 3);
+  NixiClock.writeSegment(tempTime1, 4);
+
+  delay(3000);
+
+  const char *forecastTime2 = docWeather["list"][1]["dt_txt"]; //Get current time
+  const int tempTime2 = docWeather["list"][1]["main"]["temp"]; //Get current time
+
+  NixiClock.writeSegment(forecastTime2[12] - '0', 2);
+  NixiClock.writeSegment(9, 3);
+  NixiClock.writeSegment(tempTime2, 4);
+
+  delay(3000);
 }

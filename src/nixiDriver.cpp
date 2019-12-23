@@ -46,7 +46,7 @@ uint8_t nixiDriver::writeSegment(uint8_t number, uint8_t segment)
     return 1;
 }
 
-void nixiDriver::writeNumber(uint8_t number, bool* truthTableNumber)
+void nixiDriver::writeNumber(uint8_t number, bool *truthTableNumber)
 {
 
     switch (number)
@@ -122,27 +122,27 @@ void nixiDriver::writeNumber(uint8_t number, bool* truthTableNumber)
     }
 }
 
-void nixiDriver::bootUp(){
-for (uint8_t i = 0; i < 10; i++)
+void nixiDriver::bootUp()
 {
-    Serial.println("Simple Test");
-    nixiDriver::writeSegment(i , 1);
-    delay(500);
-    nixiDriver::writeSegment(i , 2);
-    delay(500);
-    nixiDriver::writeSegment(i , 3);
-    delay(500);
-    nixiDriver::writeSegment(i , 4);
-    delay(500);
-}
+    for (uint8_t i = 0; i < 10; i++)
+    {
+        Serial.println("Simple Test");
+        nixiDriver::writeSegment(i, 1);
+        delay(500);
+        nixiDriver::writeSegment(i, 2);
+        delay(500);
+        nixiDriver::writeSegment(i, 3);
+        delay(500);
+        nixiDriver::writeSegment(i, 4);
+        delay(500);
+    }
 
-delay(1000);
+    delay(1000);
 
-    nixiDriver::writeSegment(10 , 1);
-    nixiDriver::writeSegment(10 , 2);
-    nixiDriver::writeSegment(10 , 3);
-    nixiDriver::writeSegment(10 , 4);
+    nixiDriver::writeSegment(10, 1);
+    nixiDriver::writeSegment(10, 2);
+    nixiDriver::writeSegment(10, 3);
+    nixiDriver::writeSegment(10, 4);
 
-    delay(2000);
-
+    delay(1000);
 }
