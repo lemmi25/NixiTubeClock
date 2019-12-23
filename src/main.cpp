@@ -124,25 +124,11 @@ void loop()
     //Get Time
     const char *date = doc["datetime"]; //Get current time
 
-    /*    memcpy(houre1buff, &date[11], 1);
-    houre1buff[1] = '\0'; */
-
     NixiClock.writeSegment(date[11] - '0', 1);
-
-    /*  memcpy(houre2buff, &date[12], 1);
-    houre2buff[1] = '\0'; */
-
     NixiClock.writeSegment(date[12] - '0', 2);
-
-    memcpy(minute1buff, &date[14], 1);
-    minute1buff[1] = '\0';
-
-    NixiClock.writeSegment(minute1buff[0] - '0', 3);
-
-    memcpy(minute2buff, &date[15], 1);
-    minute2buff[1] = '\0';
-
-    NixiClock.writeSegment(minute2buff[0] - '0', 4);
+    
+    NixiClock.writeSegment(date[14] - '0', 3);
+    NixiClock.writeSegment(date[15] - '0', 4);
 
     /*     Serial.println("Houre1");
       Serial.println((uint8_t)houre1buff[0] - '0');
@@ -261,7 +247,7 @@ void setTemp(int temperature, int forecastTime)
     NixiClock.writeSegment(1, 1);
     NixiClock.writeSegment(forecastTime, 2);
     NixiClock.writeSegment(0, 3);
-    NixiClock.writeSegment(temperature, 4);
+    NixiClock.writeSegment(abs(temperature), 4);
     //Serial.println("between -10 and 0");
   }
   else if (temperature < -9)
