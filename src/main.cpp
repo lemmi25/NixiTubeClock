@@ -21,9 +21,6 @@ bool enableTimeOld = false;
 //const char *ssid = "MikroTik-9CBB75";
 //const char *password = "";
 
-const char *ssid = "<your ssid>";
-const char *password = "<your pswd>";
-
 void setTemp(int temperature, int forecastTime);
 void setPressure(int pressure, int forecastTime);
 
@@ -126,15 +123,6 @@ void loop()
 
     NixiClock.writeSegment(date[14] - '0', 3);
     NixiClock.writeSegment(date[15] - '0', 4);
-
-    /*     Serial.println("Houre1");
-      Serial.println((uint8_t)houre1buff[0] - '0');
-      Serial.println("Houre2");
-      Serial.println((uint8_t)houre2buff[0] - '0');
-      Serial.println("Minute1");
-      Serial.println((uint8_t)minute1buff[0] - '0');
-      Serial.println("Minute2");
-      Serial.println((uint8_t)minute2buff[0] - '0'); */
 
     vTaskDelay(2000); //2sec
   }
