@@ -1,7 +1,7 @@
 # ESP32 NixiTube OTA Clock
 
 <p align="center"> 
-<img src="https://raw.githubusercontent.com/wiki/lemmi25/ESP32-Numitron-OTA-Watch/images/Additional/intro.gif">
+<img src="https://github.com/lemmi25/NixiTubeClock/blob/master/images/Main.JPG">
 </p>
 
-**Please have a look at the [WIKI](https://github.com/lemmi25/ESP32-Numitron-OTA-Watch/wiki)**
+**Please have a look around**

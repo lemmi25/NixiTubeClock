@@ -21,6 +21,9 @@ bool enableTimeOld = false;
 //const char *ssid = "MikroTik-9CBB75";
 //const char *password = "";
 
+const char *ssid = "FRITZ!Box 7412";
+const char *password = "92051906009500296929";
+
 void setTemp(int temperature, int forecastTime);
 void setPressure(int pressure, int forecastTime);
 
