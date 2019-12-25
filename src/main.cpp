@@ -21,16 +21,13 @@ bool enableTimeOld = false;
 //const char *ssid = "MikroTik-9CBB75";
 //const char *password = "";
 
-const char *ssid = "WLAN-164097";
-const char *password = "4028408165188671";
-
-char houre1buff[2];
-char houre2buff[2];
-char minute1buff[2];
-char minute2buff[2];
+const char *ssid = "<your ssid>";
+const char *password = "<your pswd>";
 
 void setTemp(int temperature, int forecastTime);
 void setPressure(int pressure, int forecastTime);
+
+const char *date;
 
 void setup()
 {
@@ -117,32 +114,18 @@ void loop()
 
     if (enableTimeOld == true)
     {
-      timeOld = minute2buff[0];
+      timeOld = date[15];
     }
     enableTimeOld = true;
 
     //Get Time
-    const char *date = doc["datetime"]; //Get current time
-
-    /*    memcpy(houre1buff, &date[11], 1);
-    houre1buff[1] = '\0'; */
+    date = doc["datetime"]; //Get current time
 
     NixiClock.writeSegment(date[11] - '0', 1);
-
-    /*  memcpy(houre2buff, &date[12], 1);
-    houre2buff[1] = '\0'; */
-
     NixiClock.writeSegment(date[12] - '0', 2);
 
-    memcpy(minute1buff, &date[14], 1);
-    minute1buff[1] = '\0';
-
-    NixiClock.writeSegment(minute1buff[0] - '0', 3);
-
-    memcpy(minute2buff, &date[15], 1);
-    minute2buff[1] = '\0';
-
-    NixiClock.writeSegment(minute2buff[0] - '0', 4);
+    NixiClock.writeSegment(date[14] - '0', 3);
+    NixiClock.writeSegment(date[15] - '0', 4);
 
     /*     Serial.println("Houre1");
       Serial.println((uint8_t)houre1buff[0] - '0');
@@ -162,7 +145,7 @@ void loop()
   }
 
   //Temperature
-  if (timeOld != minute2buff[0])
+  if (timeOld != date[15])
   {
     httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=2&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
     int httpCodeWeather = httpWeather.GET();
@@ -261,7 +244,7 @@ void setTemp(int temperature, int forecastTime)
     NixiClock.writeSegment(1, 1);
     NixiClock.writeSegment(forecastTime, 2);
     NixiClock.writeSegment(0, 3);
-    NixiClock.writeSegment(temperature, 4);
+    NixiClock.writeSegment(abs(temperature), 4);
     //Serial.println("between -10 and 0");
   }
   else if (temperature < -9)
