@@ -12,7 +12,8 @@ nixiDriver NixiClock(4, 5, 2);
 HTTPClient http;
 HTTPClient httpWeather;
 
-int timeOld = 0;
+char timeOld;
+bool enableTimeOld = false;
 
 //const char *ssid = "UPC3442387";
 //const char *password = "Ufppvydmk8mw";
@@ -28,8 +29,8 @@ char houre2buff[2];
 char minute1buff[2];
 char minute2buff[2];
 
-char forecastTime1buff;
-char forecastTime2buff;
+void setTemp(int temperature, int forecastTime);
+void setPressure(int pressure, int forecastTime);
 
 void setup()
 {
@@ -44,7 +45,6 @@ void setup()
     delay(5000);
     ESP.restart();
   }
-
   // Hostname defaults to esp3232-[MAC]
   ArduinoOTA.setHostname("OTA ESP32");
 
@@ -96,6 +96,8 @@ void loop()
 {
   ArduinoOTA.handle();
 
+  //Time
+
   http.begin("http://worldtimeapi.org/api/timezone/Europe/Berlin.json"); //Specify the URL
   int httpCodeTime = http.GET();
 
@@ -109,27 +111,28 @@ void loop()
     {
       Serial.print(F("deserializeJson() failed: "));
       Serial.println(error.c_str());
-      delay(2000);
+      vTaskDelay(2000); //2sec
       return;
     }
+
+    if (enableTimeOld == true)
+    {
+      timeOld = minute2buff[0];
+    }
+    enableTimeOld = true;
 
     //Get Time
     const char *date = doc["datetime"]; //Get current time
 
-    //Get Time
-    /* JsonArray array = docWeather.as<JsonArray>();
-    const char *weather = array[0]["main"]; //Get current time
-    Serial.println(weather);
- */
-    memcpy(houre1buff, &date[11], 1);
-    houre1buff[1] = '\0';
+    /*    memcpy(houre1buff, &date[11], 1);
+    houre1buff[1] = '\0'; */
 
-    NixiClock.writeSegment(houre1buff[0] - '0', 1);
+    NixiClock.writeSegment(date[11] - '0', 1);
 
-    memcpy(houre2buff, &date[12], 1);
-    houre2buff[1] = '\0';
+    /*  memcpy(houre2buff, &date[12], 1);
+    houre2buff[1] = '\0'; */
 
-    NixiClock.writeSegment(houre2buff[0] - '0', 2);
+    NixiClock.writeSegment(date[12] - '0', 2);
 
     memcpy(minute1buff, &date[14], 1);
     minute1buff[1] = '\0';
@@ -141,51 +144,136 @@ void loop()
 
     NixiClock.writeSegment(minute2buff[0] - '0', 4);
 
-    Serial.println("Houre1");
-    Serial.println((uint8_t)houre1buff[0] - '0');
-    Serial.println("Houre2");
-    Serial.println((uint8_t)houre2buff[0] - '0');
-    Serial.println("Minute1");
-    Serial.println((uint8_t)minute1buff[0] - '0');
-    Serial.println("Minute2");
-    Serial.println((uint8_t)minute2buff[0] - '0');
+    /*     Serial.println("Houre1");
+      Serial.println((uint8_t)houre1buff[0] - '0');
+      Serial.println("Houre2");
+      Serial.println((uint8_t)houre2buff[0] - '0');
+      Serial.println("Minute1");
+      Serial.println((uint8_t)minute1buff[0] - '0');
+      Serial.println("Minute2");
+      Serial.println((uint8_t)minute2buff[0] - '0'); */
 
-    delay(2000);
+    vTaskDelay(2000); //2sec
   }
 
   else
   {
-    Serial.println("Error on HTTP request");
+    Serial.println("Error on HTTP request Time");
   }
 
-  httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=2&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
-  int httpCodeWeather = httpWeather.GET();
-  Serial.println(httpCodeWeather); //Make the request
-
-  DeserializationError errorWeather = deserializeJson(docWeather, httpWeather.getString());
-
-  if (errorWeather)
+  //Temperature
+  if (timeOld != minute2buff[0])
   {
-    Serial.print(F("deserializeJson() from weather failed: "));
-    Serial.println(errorWeather.c_str());
-    delay(2000);
+    httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=2&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
+    int httpCodeWeather = httpWeather.GET();
+
+    if (httpCodeWeather > 0)
+    { //Check for the returning code
+
+      DeserializationError errorWeather = deserializeJson(docWeather, httpWeather.getString());
+
+      if (errorWeather)
+      {
+        Serial.print(F("deserializeJson() from weather failed: "));
+        Serial.println(errorWeather.c_str());
+        vTaskDelay(2000); //2sec
+      }
+
+      const int tempTime1 = docWeather["list"][0]["main"]["temp"];     //Get current time forecast
+      const int pressure1 = docWeather["list"][0]["main"]["pressure"]; //Get current time forecast
+      setTemp(tempTime1, 3);
+      delay(4000); //4sec
+      NixiClock.writeSegment(10, 1);
+      NixiClock.writeSegment(10, 2);
+      NixiClock.writeSegment(10, 3);
+      NixiClock.writeSegment(10, 4);
+      delay(500);
+      setPressure(pressure1, 3);
+      delay(4000); //4sec
+
+      const int tempTime2 = docWeather["list"][1]["main"]["temp"];     //Get current time
+      const int pressure2 = docWeather["list"][0]["main"]["pressure"]; //Get current time forecast
+      setTemp(tempTime2, 6);
+      delay(4000); //4sec
+      NixiClock.writeSegment(10, 1);
+      NixiClock.writeSegment(10, 2);
+      NixiClock.writeSegment(10, 3);
+      NixiClock.writeSegment(10, 4);
+      delay(500);
+      setPressure(pressure2, 3);
+      delay(4000); //4sec
+    }
+    else
+    {
+      Serial.println("Error on HTTP request Date");
+    }
+  }
+  else
+  {
+    return;
+  }
+}
+
+int getdigit(int num, int n)
+{
+  int r, t1, t2;
+
+  t1 = pow(10, n + 1);
+  r = num % t1;
+
+  if (n > 0)
+  {
+    t2 = pow(10, n);
+    r = r / t2;
   }
 
-  const char *forecastTime1 = docWeather["list"][0]["dt_txt"]; //Get current temp
-  const int tempTime1 = docWeather["list"][0]["main"]["temp"]; //Get current time forecast
+  return r;
+}
 
-  NixiClock.writeSegment(forecastTime1[12] - '0', 2);
-  NixiClock.writeSegment(9, 3);
-  NixiClock.writeSegment(tempTime1, 4);
+void setPressure(int pressure, int forecastTime)
+{
+  NixiClock.writeSegment(getdigit(pressure, 3), 1);
+  NixiClock.writeSegment(getdigit(pressure, 2), 2);
+  NixiClock.writeSegment(getdigit(pressure, 1), 3);
+  NixiClock.writeSegment(getdigit(pressure, 0), 4);
+}
 
-  delay(3000);
-
-  const char *forecastTime2 = docWeather["list"][1]["dt_txt"]; //Get current time
-  const int tempTime2 = docWeather["list"][1]["main"]["temp"]; //Get current time
-
-  NixiClock.writeSegment(forecastTime2[12] - '0', 2);
-  NixiClock.writeSegment(9, 3);
-  NixiClock.writeSegment(tempTime2, 4);
-
-  delay(3000);
+void setTemp(int temperature, int forecastTime)
+{
+  if (temperature < 10 && temperature > 0)
+  {
+    NixiClock.writeSegment(0, 1);
+    NixiClock.writeSegment(forecastTime, 2);
+    NixiClock.writeSegment(0, 3);
+    NixiClock.writeSegment(temperature, 4);
+    //Serial.println("Between 0 and 10");
+  }
+  else if (temperature > 9)
+  {
+    NixiClock.writeSegment(0, 1);
+    NixiClock.writeSegment(forecastTime, 2);
+    NixiClock.writeSegment(getdigit(temperature, 1), 3);
+    NixiClock.writeSegment(getdigit(temperature, 0), 4);
+    //Serial.println("above 10");
+  }
+  else if (temperature > -10 && temperature < 0)
+  {
+    NixiClock.writeSegment(1, 1);
+    NixiClock.writeSegment(forecastTime, 2);
+    NixiClock.writeSegment(0, 3);
+    NixiClock.writeSegment(temperature, 4);
+    //Serial.println("between -10 and 0");
+  }
+  else if (temperature < -9)
+  {
+    NixiClock.writeSegment(1, 1);
+    NixiClock.writeSegment(forecastTime, 2);
+    NixiClock.writeSegment(getdigit(abs(temperature), 1), 3);
+    NixiClock.writeSegment(getdigit(abs(temperature), 0), 4);
+    //Serial.println("below -9");
+  }
+  else
+  {
+    return;
+  }
 }
