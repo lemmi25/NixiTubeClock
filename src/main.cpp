@@ -1,3 +1,5 @@
+/* Code written by Moritz Boesenberg 26/12/2019 under the MIT licence */
+
 #include <nixiDriver.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
@@ -21,6 +23,7 @@ bool enableTimeOld = false;
 //const char *ssid = "MikroTik-9CBB75";
 //const char *password = "";
 
+//Set your WiFi Name (SSID) and Password here
 const char *ssid = "FRITZ!Box 7412";
 const char *password = "92051906009500296929";
 
@@ -47,7 +50,6 @@ void setup()
 
   // No authentication by default
   // ArduinoOTA.setPassword("admin");
-
   // Password can be set with it's md5 value as well
   // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
   ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
@@ -85,8 +87,7 @@ void setup()
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  //NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
-  //delay(2000);
+  NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
 }
 
 void loop()
