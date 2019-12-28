@@ -15,6 +15,7 @@ HTTPClient http;
 HTTPClient httpWeather;
 
 char timeOld;
+char timeCurrent;
 bool enableTimeOld = false;
 
 //const char *ssid = "UPC3442387";
@@ -29,8 +30,6 @@ const char *password = "92051906009500296929";
 
 void setTemp(int temperature, int forecastTime);
 void setPressure(int pressure, int forecastTime);
-
-const char *date;
 
 void setup()
 {
@@ -115,18 +114,20 @@ void loop()
 
     if (enableTimeOld == true)
     {
-      timeOld = date[15];
+      timeOld = timeCurrent;
     }
     enableTimeOld = true;
 
     //Get Time
-    date = doc["datetime"]; //Get current time
+    const char *date = doc["datetime"]; //Get current time
 
     NixiClock.writeSegment(date[11] - '0', 1);
     NixiClock.writeSegment(date[12] - '0', 2);
 
     NixiClock.writeSegment(date[14] - '0', 3);
     NixiClock.writeSegment(date[15] - '0', 4);
+
+    timeCurrent = date[15];
 
     vTaskDelay(2000); //2sec
   }
@@ -137,7 +138,7 @@ void loop()
   }
 
   //Temperature
-  if (timeOld != date[15])
+  if (timeOld != timeCurrent)
   {
     httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=2&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
     int httpCodeWeather = httpWeather.GET();
@@ -154,8 +155,8 @@ void loop()
         vTaskDelay(2000); //2sec
       }
 
-      const int tempTime1 = docWeather["list"][0]["main"]["temp"];     //Get current time forecast
-      const int pressure1 = docWeather["list"][0]["main"]["pressure"]; //Get current time forecast
+      const int tempTime1 = docWeather["list"][0]["main"]["temp"];     //Get current time forecast 3h
+      const int pressure1 = docWeather["list"][0]["main"]["pressure"]; //Get current pressure forecast 3h
       setTemp(tempTime1, 3);
       delay(4000); //4sec
       NixiClock.writeSegment(10, 1);
@@ -166,8 +167,8 @@ void loop()
       setPressure(pressure1, 3);
       delay(4000); //4sec
 
-      const int tempTime2 = docWeather["list"][1]["main"]["temp"];     //Get current time
-      const int pressure2 = docWeather["list"][0]["main"]["pressure"]; //Get current time forecast
+      const int tempTime2 = docWeather["list"][1]["main"]["temp"];     //Get current time 6h
+      const int pressure2 = docWeather["list"][0]["main"]["pressure"]; //Get pressure time forecast 6h
       setTemp(tempTime2, 6);
       delay(4000); //4sec
       NixiClock.writeSegment(10, 1);
