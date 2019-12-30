@@ -168,7 +168,7 @@ void loop()
       delay(4000); //4sec
 
       const int tempTime2 = docWeather["list"][1]["main"]["temp"];     //Get current time 6h
-      const int pressure2 = docWeather["list"][0]["main"]["pressure"]; //Get pressure time forecast 6h
+      const int pressure2 = docWeather["list"][1]["main"]["pressure"]; //Get pressure time forecast 6h
       setTemp(tempTime2, 6);
       delay(4000); //4sec
       NixiClock.writeSegment(10, 1);
@@ -216,7 +216,7 @@ void setPressure(int pressure, int forecastTime)
 
 void setTemp(int temperature, int forecastTime)
 {
-  if (temperature < 10 && temperature > 0)
+  if (temperature < 10 && temperature >= 0)
   {
     NixiClock.writeSegment(0, 1);
     NixiClock.writeSegment(forecastTime, 2);
