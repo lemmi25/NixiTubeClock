@@ -140,7 +140,7 @@ void loop()
   //Temperature
   if (timeOld != timeCurrent)
   {
-    httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=2&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
+    httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Velber,de&cnt=3&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
     int httpCodeWeather = httpWeather.GET();
 
     if (httpCodeWeather > 0)
@@ -155,8 +155,8 @@ void loop()
         vTaskDelay(2000); //2sec
       }
 
-      const int tempTime1 = docWeather["list"][0]["main"]["temp"];     //Get current time forecast 3h
-      const int pressure1 = docWeather["list"][0]["main"]["pressure"]; //Get current pressure forecast 3h
+      const int tempTime1 = docWeather["list"][1]["main"]["temp"];     //Get current time forecast 3h
+      const int pressure1 = docWeather["list"][1]["main"]["pressure"]; //Get current pressure forecast 3h
       setTemp(tempTime1, 3);
       delay(4000); //4sec
       NixiClock.writeSegment(10, 1);
@@ -167,8 +167,8 @@ void loop()
       setPressure(pressure1, 3);
       delay(4000); //4sec
 
-      const int tempTime2 = docWeather["list"][1]["main"]["temp"];     //Get current time 6h
-      const int pressure2 = docWeather["list"][1]["main"]["pressure"]; //Get pressure time forecast 6h
+      const int tempTime2 = docWeather["list"][2]["main"]["temp"];     //Get current time 6h
+      const int pressure2 = docWeather["list"][2]["main"]["pressure"]; //Get pressure time forecast 6h
       setTemp(tempTime2, 6);
       delay(4000); //4sec
       NixiClock.writeSegment(10, 1);
