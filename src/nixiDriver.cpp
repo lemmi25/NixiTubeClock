@@ -126,7 +126,7 @@ void nixiDriver::bootUp()
 {
     for (uint8_t i = 0; i < 10; i++)
     {
-        Serial.println("Simple Test");
+        //Serial.println("Simple Test");
         nixiDriver::writeSegment(i, 1);
         delay(500);
         nixiDriver::writeSegment(i, 2);

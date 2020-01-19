@@ -5,6 +5,11 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <ArduinoOTA.h>
+#include "RTClib.h"
+#include "SHT21.h"
+
+RTC_DS1307 rtc;
+SHT21 SHT21;
 
 StaticJsonDocument<500> doc;
 StaticJsonDocument<5000> docWeather;
@@ -18,15 +23,7 @@ char timeOld;
 char timeCurrent;
 bool enableTimeOld = false;
 
-//const char *ssid = "UPC3442387";
-//const char *password = "Ufppvydmk8mw";
-
-//const char *ssid = "MikroTik-9CBB75";
-//const char *password = "";
-
-//Set your WiFi Name (SSID) and Password here
-const char *ssid = "FRITZ!Box 7412";
-const char *password = "92051906009500296929";
+//PSWD setup
 
 void setTemp(int temperature, int forecastTime);
 void setPressure(int pressure, int forecastTime);
@@ -34,9 +31,26 @@ void setPressure(int pressure, int forecastTime);
 void setup()
 {
 
-  Serial.begin(115200);
+  pinMode(26, OUTPUT);
+  pinMode(27, OUTPUT);
+
+  Serial.begin(57600);
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+
+   
+  rtc.begin();
+  SHT21.begin();
+
+  if (! rtc.isrunning()) {
+    Serial.println("RTC is NOT running!");
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  }
+
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
@@ -86,12 +100,42 @@ void setup()
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
+  //NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
 }
 
 void loop()
 {
   ArduinoOTA.handle();
+
+Serial.println("HIGH");
+  digitalWrite(26, HIGH);
+  digitalWrite(27, HIGH);  
+   vTaskDelay(5000); //2sec
+  Serial.println("LOW");
+  digitalWrite(26, LOW);
+  digitalWrite(27, LOW);  
+  vTaskDelay(5000); //2sec
+
+  DateTime time = rtc.now();
+
+if(rtc.isrunning()!=0){
+  //Full Timestamp
+  Serial.println(String("DateTime::TIMESTAMP_FULL:\t")+time.timestamp(DateTime::TIMESTAMP_FULL));
+
+  //Date Only
+  Serial.println(String("DateTime::TIMESTAMP_DATE:\t")+time.timestamp(DateTime::TIMESTAMP_DATE));
+
+  //Full Timestamp
+  Serial.println(String("DateTime::TIMESTAMP_TIME:\t")+time.timestamp(DateTime::TIMESTAMP_TIME));
+
+  Serial.println("\n");
+
+  Serial.print("Humidity(%RH): ");
+  Serial.print(SHT21.getHumidity());
+  Serial.print("     Temperature(C): ");
+  Serial.println(SHT21.getTemperature());
+}
+
 
   //Time
 
@@ -128,6 +172,8 @@ void loop()
     NixiClock.writeSegment(date[15] - '0', 4);
 
     timeCurrent = date[15];
+
+    Serial.println(date);
 
     vTaskDelay(2000); //2sec
   }
