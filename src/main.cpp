@@ -11,7 +11,7 @@
 RTC_DS1307 rtc;
 SHT21 SHT21;
 
-StaticJsonDocument<500> doc;
+StaticJsonDocument<5000> doc;
 StaticJsonDocument<5000> docWeather;
 
 nixiDriver NixiClock(4, 5, 2);
