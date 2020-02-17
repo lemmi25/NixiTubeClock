@@ -7,6 +7,7 @@
 #include <ArduinoOTA.h>
 #include "RTClib.h"
 #include "SHT21.h"
+#include "EasyBuzzer.h"
 
 RTC_DS1307 rtc;
 SHT21 SHT21;
@@ -15,6 +16,13 @@ StaticJsonDocument<5000> doc;
 StaticJsonDocument<5000> docWeather;
 
 nixiDriver NixiClock(4, 5, 2);
+
+unsigned int frequency = 1000;
+unsigned int onDuration = 50;
+unsigned int offDuration = 100;
+unsigned int beeps = 2;
+unsigned int pauseDuration = 500;
+unsigned int cycles = 10;
 
 HTTPClient http;
 HTTPClient httpWeather;
@@ -34,15 +42,26 @@ void setup()
   pinMode(26, OUTPUT);
   pinMode(27, OUTPUT);
 
+  EasyBuzzer.setPin(18);
+
+  EasyBuzzer.beep(
+      600,           // Frequency in hertz(HZ).
+      onDuration,    // On Duration in milliseconds(ms).
+      offDuration,   // Off Duration in milliseconds(ms).
+      beeps,         // The number of beeps per cycle.
+      pauseDuration, // Pause duration.
+      cycles         // The number of cycle.
+  );
+
   Serial.begin(57600);
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  WiFi.begin("UPC3442387", "Ufppvydmk8mw");
 
-   
   rtc.begin();
   SHT21.begin();
 
-  if (! rtc.isrunning()) {
+  if (!rtc.isrunning())
+  {
     Serial.println("RTC is NOT running!");
     // following line sets the RTC to the date & time this sketch was compiled
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
@@ -50,7 +69,6 @@ void setup()
     // January 21, 2014 at 3am you would call:
     // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
   }
-
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
@@ -105,37 +123,39 @@ void setup()
 
 void loop()
 {
+  EasyBuzzer.update();
+
   ArduinoOTA.handle();
 
-Serial.println("HIGH");
+  Serial.println("HIGH");
   digitalWrite(26, HIGH);
-  digitalWrite(27, HIGH);  
-   vTaskDelay(5000); //2sec
+  digitalWrite(27, HIGH);
+  vTaskDelay(5000); //2sec
   Serial.println("LOW");
   digitalWrite(26, LOW);
-  digitalWrite(27, LOW);  
+  digitalWrite(27, LOW);
   vTaskDelay(5000); //2sec
 
   DateTime time = rtc.now();
 
-if(rtc.isrunning()!=0){
-  //Full Timestamp
-  Serial.println(String("DateTime::TIMESTAMP_FULL:\t")+time.timestamp(DateTime::TIMESTAMP_FULL));
+  if (rtc.isrunning() != 0)
+  {
+    //Full Timestamp
+    Serial.println(String("DateTime::TIMESTAMP_FULL:\t") + time.timestamp(DateTime::TIMESTAMP_FULL));
 
-  //Date Only
-  Serial.println(String("DateTime::TIMESTAMP_DATE:\t")+time.timestamp(DateTime::TIMESTAMP_DATE));
+    //Date Only
+    Serial.println(String("DateTime::TIMESTAMP_DATE:\t") + time.timestamp(DateTime::TIMESTAMP_DATE));
 
-  //Full Timestamp
-  Serial.println(String("DateTime::TIMESTAMP_TIME:\t")+time.timestamp(DateTime::TIMESTAMP_TIME));
+    //Full Timestamp
+    Serial.println(String("DateTime::TIMESTAMP_TIME:\t") + time.timestamp(DateTime::TIMESTAMP_TIME));
 
-  Serial.println("\n");
+    Serial.println("\n");
 
-  Serial.print("Humidity(%RH): ");
-  Serial.print(SHT21.getHumidity());
-  Serial.print("     Temperature(C): ");
-  Serial.println(SHT21.getTemperature());
-}
-
+    Serial.print("Humidity(%RH): ");
+    Serial.print(SHT21.getHumidity());
+    Serial.print("     Temperature(C): ");
+    Serial.println(SHT21.getTemperature());
+  }
 
   //Time
 
