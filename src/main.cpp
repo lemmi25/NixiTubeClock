@@ -23,6 +23,7 @@ unsigned int offDuration = 100;
 unsigned int beeps = 2;
 unsigned int pauseDuration = 500;
 unsigned int cycles = 10;
+bool state = true;
 
 HTTPClient http;
 HTTPClient httpWeather;
@@ -41,6 +42,7 @@ void setup()
 
   pinMode(26, OUTPUT);
   pinMode(27, OUTPUT);
+  pinMode(15, INPUT);
 
   EasyBuzzer.setPin(18);
 
@@ -125,7 +127,7 @@ void setup()
       "TaskOne", /* String with name of task. */
       10000,     /* Stack size in bytes. */
       NULL,      /* Parameter passed as input of the task */
-      2,         /* Priority of the task. */
+      1,         /* Priority of the task. */
       NULL);     /* Task handle. */
 
   xTaskCreate(
@@ -139,7 +141,7 @@ void setup()
 
 void loop()
 {
-  delay(100);
+  delay(50);
 }
 
 void taskTwo(void *parameter)
@@ -147,21 +149,26 @@ void taskTwo(void *parameter)
 
   for (;;)
   {
-    Serial.println("HIGH");
-    digitalWrite(26, HIGH);
-    digitalWrite(27, HIGH);
-    vTaskDelay(10); //2sec
-    Serial.println("LOW");
-    digitalWrite(26, LOW);
-    digitalWrite(27, LOW);
-    vTaskDelay(10); //2sec
-
-    DateTime time = rtc.now();
-
-    NixiClock.writeSegment(1, 1);
-    NixiClock.writeSegment(2, 2);
-    NixiClock.writeSegment(3, 3);
-    NixiClock.writeSegment(4, 4);
+    if (digitalRead(15) == 0)
+    {
+      digitalWrite(26, LOW);
+      digitalWrite(27, LOW);
+      NixiClock.writeSegment(10, 1);
+      NixiClock.writeSegment(10, 2);
+      NixiClock.writeSegment(10, 3);
+      NixiClock.writeSegment(10, 4);
+      delay(500);
+      state = !state;
+    }
+    if (state == false)
+    {
+      digitalWrite(26, HIGH);
+      digitalWrite(27, HIGH);
+      NixiClock.writeSegment(4, 1);
+      NixiClock.writeSegment(3, 2);
+      NixiClock.writeSegment(1, 3);
+      NixiClock.writeSegment(2, 4);
+    }
   }
 }
 
