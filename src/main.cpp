@@ -33,8 +33,8 @@ bool enableTimeOld = false;
 
 //PSWD setup
 
-void setTemp(int temperature, int forecastTime);
-void setPressure(int pressure, int forecastTime);
+void taskOne(void *parameter);
+void taskTwo(void *parameter);
 
 void setup()
 {
@@ -119,203 +119,57 @@ void setup()
   Serial.println(WiFi.localIP());
 
   //NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
+
+  xTaskCreate(
+      taskOne,   /* Task function. */
+      "TaskOne", /* String with name of task. */
+      10000,     /* Stack size in bytes. */
+      NULL,      /* Parameter passed as input of the task */
+      2,         /* Priority of the task. */
+      NULL);     /* Task handle. */
+
+  xTaskCreate(
+      taskTwo,   /* Task function. */
+      "TaskOne", /* String with name of task. */
+      10000,     /* Stack size in bytes. */
+      NULL,      /* Parameter passed as input of the task */
+      1,         /* Priority of the task. */
+      NULL);     /* Task handle. */
 }
 
 void loop()
 {
-  EasyBuzzer.update();
-
-  ArduinoOTA.handle();
-
-  Serial.println("HIGH");
-  digitalWrite(26, HIGH);
-  digitalWrite(27, HIGH);
-  vTaskDelay(5000); //2sec
-  Serial.println("LOW");
-  digitalWrite(26, LOW);
-  digitalWrite(27, LOW);
-  vTaskDelay(5000); //2sec
-
-  DateTime time = rtc.now();
-
-  if (rtc.isrunning() != 0)
-  {
-    //Full Timestamp
-    Serial.println(String("DateTime::TIMESTAMP_FULL:\t") + time.timestamp(DateTime::TIMESTAMP_FULL));
-
-    //Date Only
-    Serial.println(String("DateTime::TIMESTAMP_DATE:\t") + time.timestamp(DateTime::TIMESTAMP_DATE));
-
-    //Full Timestamp
-    Serial.println(String("DateTime::TIMESTAMP_TIME:\t") + time.timestamp(DateTime::TIMESTAMP_TIME));
-
-    Serial.println("\n");
-
-    Serial.print("Humidity(%RH): ");
-    Serial.print(SHT21.getHumidity());
-    Serial.print("     Temperature(C): ");
-    Serial.println(SHT21.getTemperature());
-  }
-
-  //Time
-
-  http.begin("http://worldtimeapi.org/api/timezone/Europe/Berlin.json"); //Specify the URL
-  int httpCodeTime = http.GET();
-
-  if (httpCodeTime > 0)
-  { //Check for the returning code
-
-    // Deserialize the JSON document
-    DeserializationError error = deserializeJson(doc, http.getString());
-
-    if (error)
-    {
-      Serial.print(F("deserializeJson() failed: "));
-      Serial.println(error.c_str());
-      vTaskDelay(2000); //2sec
-      return;
-    }
-
-    if (enableTimeOld == true)
-    {
-      timeOld = timeCurrent;
-    }
-    enableTimeOld = true;
-
-    //Get Time
-    const char *date = doc["datetime"]; //Get current time
-
-    NixiClock.writeSegment(date[11] - '0', 1);
-    NixiClock.writeSegment(date[12] - '0', 2);
-
-    NixiClock.writeSegment(date[14] - '0', 3);
-    NixiClock.writeSegment(date[15] - '0', 4);
-
-    timeCurrent = date[15];
-
-    Serial.println(date);
-
-    vTaskDelay(2000); //2sec
-  }
-
-  else
-  {
-    Serial.println("Error on HTTP request Time");
-  }
-
-  //Temperature
-  if (timeOld != timeCurrent)
-  {
-    httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Velber,de&cnt=3&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
-    int httpCodeWeather = httpWeather.GET();
-
-    if (httpCodeWeather > 0)
-    { //Check for the returning code
-
-      DeserializationError errorWeather = deserializeJson(docWeather, httpWeather.getString());
-
-      if (errorWeather)
-      {
-        Serial.print(F("deserializeJson() from weather failed: "));
-        Serial.println(errorWeather.c_str());
-        vTaskDelay(2000); //2sec
-      }
-
-      const int tempTime1 = docWeather["list"][1]["main"]["temp"];     //Get current time forecast 3h
-      const int pressure1 = docWeather["list"][1]["main"]["pressure"]; //Get current pressure forecast 3h
-      setTemp(tempTime1, 3);
-      delay(4000); //4sec
-      NixiClock.writeSegment(10, 1);
-      NixiClock.writeSegment(10, 2);
-      NixiClock.writeSegment(10, 3);
-      NixiClock.writeSegment(10, 4);
-      delay(500);
-      setPressure(pressure1, 3);
-      delay(4000); //4sec
-
-      const int tempTime2 = docWeather["list"][2]["main"]["temp"];     //Get current time 6h
-      const int pressure2 = docWeather["list"][2]["main"]["pressure"]; //Get pressure time forecast 6h
-      setTemp(tempTime2, 6);
-      delay(4000); //4sec
-      NixiClock.writeSegment(10, 1);
-      NixiClock.writeSegment(10, 2);
-      NixiClock.writeSegment(10, 3);
-      NixiClock.writeSegment(10, 4);
-      delay(500);
-      setPressure(pressure2, 3);
-      delay(4000); //4sec
-    }
-    else
-    {
-      Serial.println("Error on HTTP request Date");
-    }
-  }
-  else
-  {
-    return;
-  }
+  delay(100);
 }
 
-int getdigit(int num, int n)
+void taskTwo(void *parameter)
 {
-  int r, t1, t2;
 
-  t1 = pow(10, n + 1);
-  r = num % t1;
-
-  if (n > 0)
+  for (;;)
   {
-    t2 = pow(10, n);
-    r = r / t2;
-  }
+    Serial.println("HIGH");
+    digitalWrite(26, HIGH);
+    digitalWrite(27, HIGH);
+    vTaskDelay(10); //2sec
+    Serial.println("LOW");
+    digitalWrite(26, LOW);
+    digitalWrite(27, LOW);
+    vTaskDelay(10); //2sec
 
-  return r;
-}
+    DateTime time = rtc.now();
 
-void setPressure(int pressure, int forecastTime)
-{
-  NixiClock.writeSegment(getdigit(pressure, 3), 1);
-  NixiClock.writeSegment(getdigit(pressure, 2), 2);
-  NixiClock.writeSegment(getdigit(pressure, 1), 3);
-  NixiClock.writeSegment(getdigit(pressure, 0), 4);
-}
-
-void setTemp(int temperature, int forecastTime)
-{
-  if (temperature < 10 && temperature >= 0)
-  {
-    NixiClock.writeSegment(0, 1);
-    NixiClock.writeSegment(forecastTime, 2);
-    NixiClock.writeSegment(0, 3);
-    NixiClock.writeSegment(temperature, 4);
-    //Serial.println("Between 0 and 10");
-  }
-  else if (temperature > 9)
-  {
-    NixiClock.writeSegment(0, 1);
-    NixiClock.writeSegment(forecastTime, 2);
-    NixiClock.writeSegment(getdigit(temperature, 1), 3);
-    NixiClock.writeSegment(getdigit(temperature, 0), 4);
-    //Serial.println("above 10");
-  }
-  else if (temperature > -10 && temperature < 0)
-  {
     NixiClock.writeSegment(1, 1);
-    NixiClock.writeSegment(forecastTime, 2);
-    NixiClock.writeSegment(0, 3);
-    NixiClock.writeSegment(abs(temperature), 4);
-    //Serial.println("between -10 and 0");
+    NixiClock.writeSegment(2, 2);
+    NixiClock.writeSegment(3, 3);
+    NixiClock.writeSegment(4, 4);
   }
-  else if (temperature < -9)
+}
+
+void taskOne(void *parameter)
+{
+
+  for (;;)
   {
-    NixiClock.writeSegment(1, 1);
-    NixiClock.writeSegment(forecastTime, 2);
-    NixiClock.writeSegment(getdigit(abs(temperature), 1), 3);
-    NixiClock.writeSegment(getdigit(abs(temperature), 0), 4);
-    //Serial.println("below -9");
-  }
-  else
-  {
-    return;
+    ArduinoOTA.handle();
   }
 }
