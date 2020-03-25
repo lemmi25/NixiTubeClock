@@ -122,6 +122,14 @@ void nixiDriver::writeNumber(uint8_t number, bool *truthTableNumber)
     }
 }
 
+void nixiDriver::off()
+{
+    nixiDriver::writeSegment(10, 1);
+    nixiDriver::writeSegment(10, 2);
+    nixiDriver::writeSegment(10, 3);
+    nixiDriver::writeSegment(10, 4);
+}
+
 void nixiDriver::bootUp()
 {
     for (uint8_t i = 0; i < 10; i++)

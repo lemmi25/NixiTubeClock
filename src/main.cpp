@@ -17,13 +17,34 @@ StaticJsonDocument<5000> docWeather;
 
 nixiDriver NixiClock(4, 5, 2);
 
+unsigned int IN_4_SEGMENT_1 = 3;
+unsigned int IN_4_SEGMENT_2 = 4;
+unsigned int IN_4_SEGMENT_3 = 2;
+unsigned int IN_4_SEGMENT_4 = 1;
+
 unsigned int frequency = 1000;
 unsigned int onDuration = 50;
 unsigned int offDuration = 100;
 unsigned int beeps = 2;
 unsigned int pauseDuration = 500;
 unsigned int cycles = 10;
-bool state = true;
+
+unsigned int BTN_ON = 15;
+unsigned int BTN_MODE = 3;
+unsigned int LED_RED = 26;
+unsigned int LED_WHITE = 27;
+
+unsigned int state_count = 0;
+
+enum Clock_state
+{
+  off,
+  on,
+  stop_clock,
+  normal_clock
+};
+
+int state;
 
 HTTPClient http;
 HTTPClient httpWeather;
@@ -34,15 +55,17 @@ bool enableTimeOld = false;
 
 //PSWD setup
 
-void taskOne(void *parameter);
-void taskTwo(void *parameter);
+void task_state(void *parameter);
+void task_ota(void *parameter);
+void stopwatch();
 
 void setup()
 {
 
-  pinMode(26, OUTPUT);
-  pinMode(27, OUTPUT);
-  pinMode(15, INPUT);
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_WHITE, OUTPUT);
+  pinMode(BTN_ON, INPUT);
+  pinMode(BTN_MODE, INPUT);
 
   EasyBuzzer.setPin(18);
 
@@ -123,15 +146,15 @@ void setup()
   //NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
 
   xTaskCreate(
-      taskOne,   /* Task function. */
-      "TaskOne", /* String with name of task. */
-      10000,     /* Stack size in bytes. */
-      NULL,      /* Parameter passed as input of the task */
-      1,         /* Priority of the task. */
-      NULL);     /* Task handle. */
+      task_state, /* Task function. */
+      "TaskOne",  /* String with name of task. */
+      10000,      /* Stack size in bytes. */
+      NULL,       /* Parameter passed as input of the task */
+      1,          /* Priority of the task. */
+      NULL);      /* Task handle. */
 
   xTaskCreate(
-      taskTwo,   /* Task function. */
+      task_ota,  /* Task function. */
       "TaskOne", /* String with name of task. */
       10000,     /* Stack size in bytes. */
       NULL,      /* Parameter passed as input of the task */
@@ -144,39 +167,83 @@ void loop()
   delay(50);
 }
 
-void taskTwo(void *parameter)
+void task_state(void *parameter)
 {
 
   for (;;)
   {
-    if (digitalRead(15) == 0)
+    delay(50);
+    if (digitalRead(BTN_MODE) == 0)
     {
-      digitalWrite(26, LOW);
-      digitalWrite(27, LOW);
-      NixiClock.writeSegment(10, 1);
-      NixiClock.writeSegment(10, 2);
-      NixiClock.writeSegment(10, 3);
-      NixiClock.writeSegment(10, 4);
-      delay(500);
-      state = !state;
+      state = stop_clock;
+      stopwatch();
     }
-    if (state == false)
+    else if (digitalRead(BTN_ON) == 0)
     {
-      digitalWrite(26, HIGH);
-      digitalWrite(27, HIGH);
-      NixiClock.writeSegment(4, 1);
-      NixiClock.writeSegment(3, 2);
-      NixiClock.writeSegment(1, 3);
-      NixiClock.writeSegment(2, 4);
+      if (state_count % 2 == 0)
+      {
+        state = off;
+      }
+      else
+      {
+        state = on;
+      }
+
+      digitalWrite(LED_RED, LOW);
+      digitalWrite(LED_WHITE, LOW);
+      NixiClock.off();
+      delay(500);
+
+      state_count++;
+    }
+    else if (state == on)
+    {
+      digitalWrite(LED_RED, HIGH);
+      digitalWrite(LED_WHITE, HIGH);
+      NixiClock.writeSegment(1, IN_4_SEGMENT_1);
+      NixiClock.writeSegment(2, IN_4_SEGMENT_2);
+      NixiClock.writeSegment(3, IN_4_SEGMENT_3);
+      NixiClock.writeSegment(4, IN_4_SEGMENT_4);
     }
   }
 }
 
-void taskOne(void *parameter)
+void task_ota(void *parameter)
 {
 
   for (;;)
   {
     ArduinoOTA.handle();
+  }
+}
+
+void stopwatch()
+{
+  int sec = 0;
+  int s = 0;
+  int m = 0;
+
+  for (;;)
+  {
+
+    m = sec / 60;
+    s = (sec - (m * 60));
+
+    NixiClock.writeSegment(m % 10, IN_4_SEGMENT_1);
+    NixiClock.writeSegment(m / 10, IN_4_SEGMENT_2);
+    NixiClock.writeSegment(s / 10, IN_4_SEGMENT_3);
+    NixiClock.writeSegment(s % 10, IN_4_SEGMENT_4);
+
+    delay(300);
+
+    if (digitalRead(BTN_MODE) == 0)
+    {
+      state = on;
+      return;
+    }
+
+    delay(800);
+
+    sec++;
   }
 }
