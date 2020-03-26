@@ -29,12 +29,13 @@ unsigned int beeps = 2;
 unsigned int pauseDuration = 500;
 unsigned int cycles = 10;
 
-unsigned int BTN_ON = 15;
-unsigned int BTN_MODE = 3;
-unsigned int LED_RED = 26;
-unsigned int LED_WHITE = 27;
+unsigned int BTN_ON = 3;
+unsigned int BTN_MODE = 15;
+unsigned int LED_RED = 27;
+unsigned int LED_WHITE = 26;
 
-unsigned int state_count = 0;
+uint32_t state_count = 0;
+uint32_t mode_count = 0;
 
 enum Clock_state
 {
@@ -58,14 +59,19 @@ bool enableTimeOld = false;
 void task_state(void *parameter);
 void task_ota(void *parameter);
 void stopwatch();
+void IRAM_ATTR isr_mode();
 
 void setup()
 {
 
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_WHITE, OUTPUT);
-  pinMode(BTN_ON, INPUT);
+
   pinMode(BTN_MODE, INPUT);
+  pinMode(BTN_ON, INPUT);
+
+  attachInterrupt(BTN_MODE, isr_mode, FALLING);
+  //pinMode(BTN_MODE, INPUT);
 
   EasyBuzzer.setPin(18);
 
@@ -175,7 +181,6 @@ void task_state(void *parameter)
     delay(50);
     if (digitalRead(BTN_MODE) == 0)
     {
-      state = stop_clock;
       stopwatch();
     }
     else if (digitalRead(BTN_ON) == 0)
@@ -196,7 +201,7 @@ void task_state(void *parameter)
 
       state_count++;
     }
-    else if (state == on)
+    else if (state == on || state == normal_clock)
     {
       digitalWrite(LED_RED, HIGH);
       digitalWrite(LED_WHITE, HIGH);
@@ -223,27 +228,44 @@ void stopwatch()
   int s = 0;
   int m = 0;
 
+  digitalWrite(LED_WHITE, LOW);
+
   for (;;)
   {
 
     m = sec / 60;
     s = (sec - (m * 60));
 
-    NixiClock.writeSegment(m % 10, IN_4_SEGMENT_1);
-    NixiClock.writeSegment(m / 10, IN_4_SEGMENT_2);
+    NixiClock.writeSegment(m / 10, IN_4_SEGMENT_1);
+    NixiClock.writeSegment(m % 10, IN_4_SEGMENT_2);
     NixiClock.writeSegment(s / 10, IN_4_SEGMENT_3);
     NixiClock.writeSegment(s % 10, IN_4_SEGMENT_4);
 
-    delay(300);
+    sec++;
 
-    if (digitalRead(BTN_MODE) == 0)
+    digitalWrite(LED_RED, !digitalRead(LED_RED));
+
+    if (state == normal_clock || m == 60)
     {
-      state = on;
       return;
     }
 
-    delay(800);
-
-    sec++;
+    delay(1000);
   }
+}
+
+volatile unsigned long oldTime = 0;
+
+void IRAM_ATTR isr_mode()
+{
+  if ((millis() - oldTime) > 500)
+  {
+    state = stop_clock;
+  }
+  else
+  {
+    state = normal_clock;
+  }
+
+  oldTime = millis();
 }
