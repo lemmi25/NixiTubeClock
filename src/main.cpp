@@ -100,11 +100,12 @@ void setup()
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_WHITE, OUTPUT);
 
+  
   ledcSetup(LED_WHITE_CHANNEL, freq, resolution);
-  ledcSetup(1, freq, resolution);
+  ledcSetup(LED_RED_CHANNEL, freq, resolution);
 
-  ledcAttachPin(LED_RED, 0);
-  ledcAttachPin(LED_WHITE, 1);
+  ledcAttachPin(LED_RED, LED_RED_CHANNEL);
+  ledcAttachPin(LED_WHITE, LED_WHITE_CHANNEL);
 
   pinMode(BTN_MODE, INPUT);
   pinMode(BTN_ON, INPUT);
