@@ -136,13 +136,10 @@ void nixiDriver::bootUp()
     {
         //Serial.println("Simple Test");
         nixiDriver::writeSegment(i, 1);
-        delay(500);
         nixiDriver::writeSegment(i, 2);
-        delay(500);
         nixiDriver::writeSegment(i, 3);
-        delay(500);
         nixiDriver::writeSegment(i, 4);
-        delay(500);
+        delay(250);
     }
 
     delay(1000);

@@ -9,6 +9,9 @@
 #include "SHT21.h"
 #include "EasyBuzzer.h"
 
+//define the Nixi (ZM1000 or IN_4)
+#define IN_4
+
 RTC_DS1307 rtc;
 SHT21 SHT21;
 
@@ -17,31 +20,43 @@ StaticJsonDocument<5000> docWeather;
 
 nixiDriver NixiClock(4, 5, 2);
 
-unsigned int IN_4_SEGMENT_1 = 3;
-unsigned int IN_4_SEGMENT_2 = 4;
-unsigned int IN_4_SEGMENT_3 = 2;
-unsigned int IN_4_SEGMENT_4 = 1;
+#ifdef IN_4
+unsigned int SEGMENT_1 = 3;
+unsigned int SEGMENT_2 = 4;
+unsigned int SEGMENT_3 = 2;
+unsigned int SEGMENT_4 = 1;
+#endif
 
-unsigned int frequency = 1000;
-unsigned int onDuration = 50;
-unsigned int offDuration = 100;
-unsigned int beeps = 2;
-unsigned int pauseDuration = 500;
-unsigned int cycles = 10;
+#ifdef ZM1000
+unsigned int SEGMENT_1 = 1;
+unsigned int SEGMENT_2 = 2;
+unsigned int SEGMENT_3 = 3;
+unsigned int SEGMENT_4 = 4;
+#endif
 
 unsigned int BTN_ON = 3;
 unsigned int BTN_MODE = 15;
 unsigned int LED_RED = 27;
 unsigned int LED_WHITE = 26;
 
-uint32_t state_count = 0;
+unsigned int LED_WHITE_CHANNEL = 1;
+unsigned int LED_RED_CHANNEL = 0;
+
+uint8_t hour = 0;
+uint8_t minute = 0;
+
+int8_t temp = 0;
+uint8_t humidity = 0;
+
+volatile unsigned long state_count = 0;
+
 uint32_t mode_count = 0;
 
 enum Clock_state
 {
   off,
   on,
-  stop_clock,
+  function,
   normal_clock
 };
 
@@ -54,18 +69,42 @@ char timeOld;
 char timeCurrent;
 bool enableTimeOld = false;
 
+unsigned int count_on = 0;
+
 //PSWD setup
 
 void task_state(void *parameter);
 void task_ota(void *parameter);
 void stopwatch();
+void sht21();
+void offwatch();
+void normalwatch();
 void IRAM_ATTR isr_mode();
 
+unsigned int frequency = 1000;
+unsigned int duration = 1000;
+
+// setting PWM properties
+const int freq = 5000;
+const int resolution = 10;
 void setup()
 {
 
+  Serial.begin(57600);
+
+  rtc.begin();
+  SHT21.begin();
+
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_WHITE, OUTPUT);
+
+  ledcSetup(LED_WHITE_CHANNEL, freq, resolution);
+  ledcSetup(1, freq, resolution);
+
+  ledcAttachPin(LED_RED, 0);
+  ledcAttachPin(LED_WHITE, 1);
 
   pinMode(BTN_MODE, INPUT);
   pinMode(BTN_ON, INPUT);
@@ -75,31 +114,13 @@ void setup()
 
   EasyBuzzer.setPin(18);
 
-  EasyBuzzer.beep(
-      600,           // Frequency in hertz(HZ).
-      onDuration,    // On Duration in milliseconds(ms).
-      offDuration,   // Off Duration in milliseconds(ms).
-      beeps,         // The number of beeps per cycle.
-      pauseDuration, // Pause duration.
-      cycles         // The number of cycle.
+  EasyBuzzer.singleBeep(
+      frequency, // Frequency in hertz(HZ).
+      duration   // Duration of the beep in milliseconds(ms).
   );
 
-  Serial.begin(57600);
   WiFi.mode(WIFI_STA);
   WiFi.begin("UPC3442387", "Ufppvydmk8mw");
-
-  rtc.begin();
-  SHT21.begin();
-
-  if (!rtc.isrunning())
-  {
-    Serial.println("RTC is NOT running!");
-    // following line sets the RTC to the date & time this sketch was compiled
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-    // This line sets the RTC with an explicit date & time, for example to set
-    // January 21, 2014 at 3am you would call:
-    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
-  }
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
@@ -149,19 +170,21 @@ void setup()
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  //NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
+  NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
+  NixiClock.off();
+  delay(1000);
 
   xTaskCreate(
-      task_state, /* Task function. */
-      "TaskOne",  /* String with name of task. */
-      10000,      /* Stack size in bytes. */
-      NULL,       /* Parameter passed as input of the task */
-      1,          /* Priority of the task. */
-      NULL);      /* Task handle. */
+      task_state,  /* Task function. */
+      "TaskState", /* String with name of task. */
+      10000,       /* Stack size in bytes. */
+      NULL,        /* Parameter passed as input of the task */
+      1,           /* Priority of the task. */
+      NULL);       /* Task handle. */
 
   xTaskCreate(
       task_ota,  /* Task function. */
-      "TaskOne", /* String with name of task. */
+      "TaskOTA", /* String with name of task. */
       10000,     /* Stack size in bytes. */
       NULL,      /* Parameter passed as input of the task */
       1,         /* Priority of the task. */
@@ -171,44 +194,66 @@ void setup()
 void loop()
 {
   delay(50);
+
+  //Get Sensor Data RTC
+  DateTime now = rtc.now();
+  hour = now.hour();
+  minute = now.minute();
+
+  //Get Sensor Data SHT21
+  humidity = round(SHT21.getHumidity());
+  temp = round(SHT21.getTemperature());
 }
 
 void task_state(void *parameter)
 {
 
+  state = on;
+
   for (;;)
   {
     delay(50);
-    if (digitalRead(BTN_MODE) == 0)
+    if (state == function)
     {
-      stopwatch();
+      //ISR is called
+      uint32_t count_int = 0;
+      for (;;)
+      {
+        if (digitalRead(BTN_MODE) == 0)
+        {
+          count_int++;
+        }
+        else
+        {
+          break;
+        }
+
+        delay(10);
+      }
+
+      for (;;)
+      {
+        if (count_int >= 100)
+        {
+          stopwatch();
+          break;
+        }
+        else
+        {
+          sht21();
+          break;
+        }
+
+        delay(10);
+      }
     }
-    else if (digitalRead(BTN_ON) == 0)
+    else if (state == off)
     {
-      if (state_count % 2 == 0)
-      {
-        state = off;
-      }
-      else
-      {
-        state = on;
-      }
-
-      digitalWrite(LED_RED, LOW);
-      digitalWrite(LED_WHITE, LOW);
-      NixiClock.off();
-      delay(500);
-
-      state_count++;
+      offwatch();
     }
     else if (state == on || state == normal_clock)
     {
-      digitalWrite(LED_RED, HIGH);
-      digitalWrite(LED_WHITE, HIGH);
-      NixiClock.writeSegment(1, IN_4_SEGMENT_1);
-      NixiClock.writeSegment(2, IN_4_SEGMENT_2);
-      NixiClock.writeSegment(3, IN_4_SEGMENT_3);
-      NixiClock.writeSegment(4, IN_4_SEGMENT_4);
+      normalwatch();
     }
   }
 }
@@ -222,50 +267,167 @@ void task_ota(void *parameter)
   }
 }
 
+void offwatch()
+{
+
+  for (int i = 70; i >= 0; --i)
+  {
+    ledcWrite(LED_RED_CHANNEL, i);
+    ledcWrite(LED_WHITE_CHANNEL, i);
+    delay(5);
+  }
+
+  NixiClock.off();
+  delay(1000);
+
+  noInterrupts();
+  for (;;)
+  {
+    if (digitalRead(BTN_ON) == 0)
+    {
+      state = on;
+      delay(500);
+      return;
+    }
+    delay(10);
+  }
+  interrupts();
+}
+
+void normalwatch()
+{
+  if (digitalRead(BTN_ON) == 0)
+  {
+    state = off;
+  }
+
+  if (state == on)
+  {
+    for (int i = 0; i <= 1024; i++)
+    {
+      ledcWrite(LED_WHITE_CHANNEL, i);
+      ledcWrite(LED_RED_CHANNEL, i);
+      delay(1);
+    }
+
+    delay(20);
+    NixiClock.writeSegment(hour / 10, SEGMENT_1);
+    delay(5);
+    NixiClock.writeSegment(hour % 10, SEGMENT_2);
+    delay(5);
+    NixiClock.writeSegment(minute / 10, SEGMENT_3);
+    delay(5);
+    NixiClock.writeSegment(minute % 10, SEGMENT_4);
+    delay(20);
+
+    for (int i = 1024; i >= 70; --i)
+    {
+      ledcWrite(LED_RED_CHANNEL, i);
+      ledcWrite(LED_WHITE_CHANNEL, i);
+      delay(4);
+    }
+    state = normal_clock;
+  }
+
+  if (count_on % 10 == 0)
+  {
+    NixiClock.writeSegment(hour / 10, SEGMENT_1);
+    NixiClock.writeSegment(hour % 10, SEGMENT_2);
+    NixiClock.writeSegment(minute / 10, SEGMENT_3);
+    NixiClock.writeSegment(minute % 10, SEGMENT_4);
+  }
+
+  ledcWrite(LED_RED_CHANNEL, 70);
+  ledcWrite(LED_WHITE_CHANNEL, 70);
+
+  count_on++;
+}
+
 void stopwatch()
 {
+  ledcWrite(LED_RED_CHANNEL, 0);
+  delay(10);
+
   int sec = 0;
   int s = 0;
   int m = 0;
 
-  digitalWrite(LED_WHITE, LOW);
+  uint8_t toggle_led_white = 1;
+  uint8_t toggle_led_red = 0;
+
+  int count = 0;
 
   for (;;)
   {
-
-    m = sec / 60;
-    s = (sec - (m * 60));
-
-    NixiClock.writeSegment(m / 10, IN_4_SEGMENT_1);
-    NixiClock.writeSegment(m % 10, IN_4_SEGMENT_2);
-    NixiClock.writeSegment(s / 10, IN_4_SEGMENT_3);
-    NixiClock.writeSegment(s % 10, IN_4_SEGMENT_4);
-
-    sec++;
-
-    digitalWrite(LED_RED, !digitalRead(LED_RED));
-
-    if (state == normal_clock || m == 60)
+    if (m == 60 || digitalRead(BTN_ON) == 0)
     {
+      state = normal_clock;
+      delay(700);
       return;
     }
 
-    delay(1000);
+    if (count % 100 == 0)
+    {
+      ledcWrite(LED_WHITE_CHANNEL, toggle_led_red * 1024);
+      ledcWrite(LED_RED_CHANNEL, toggle_led_white * 1024);
+
+      m = sec / 60;
+      s = (sec - (m * 60));
+      NixiClock.writeSegment(m / 10, SEGMENT_1);
+      NixiClock.writeSegment(m % 10, SEGMENT_2);
+      NixiClock.writeSegment(s / 10, SEGMENT_3);
+      NixiClock.writeSegment(s % 10, SEGMENT_4);
+
+      sec++;
+      toggle_led_white = !toggle_led_white;
+      toggle_led_red = !toggle_led_red;
+    }
+    count++;
+    delay(10);
   }
 }
 
-volatile unsigned long oldTime = 0;
-
-void IRAM_ATTR isr_mode()
+void sht21()
 {
-  if ((millis() - oldTime) > 500)
+
+  if (temp <= 0)
   {
-    state = stop_clock;
+    temp = (int8_t)abs(temp);
+
+    NixiClock.writeSegment(0, SEGMENT_1);
+    NixiClock.writeSegment(0, SEGMENT_2);
+    NixiClock.writeSegment(temp / 10, SEGMENT_3);
+    NixiClock.writeSegment(temp % 10, SEGMENT_4);
+    ledcWrite(LED_RED_CHANNEL, 0);
+    ledcWrite(LED_WHITE_CHANNEL, 1024);
   }
   else
   {
-    state = normal_clock;
+
+    NixiClock.writeSegment(10, SEGMENT_1);
+    NixiClock.writeSegment(10, SEGMENT_2);
+    NixiClock.writeSegment(temp / 10, SEGMENT_3);
+    NixiClock.writeSegment(temp % 10, SEGMENT_4);
+    ledcWrite(LED_WHITE_CHANNEL, 0);
+    ledcWrite(LED_RED_CHANNEL, 1024);
   }
 
-  oldTime = millis();
+  delay(1500);
+
+  NixiClock.writeSegment(10, SEGMENT_1);
+  NixiClock.writeSegment(10, SEGMENT_2);
+  NixiClock.writeSegment(humidity / 10, SEGMENT_3);
+  NixiClock.writeSegment(humidity % 10, SEGMENT_4);
+
+  ledcWrite(LED_WHITE_CHANNEL, 1024);
+  ledcWrite(LED_RED_CHANNEL, 0);
+
+  delay(1500);
+
+  state = normal_clock;
+}
+
+void IRAM_ATTR isr_mode()
+{
+  state = function;
 }
