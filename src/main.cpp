@@ -7,13 +7,14 @@
 #include <ArduinoOTA.h>
 #include "RTClib.h"
 #include "SHT21.h"
+#include <string.h>
 #include "EasyBuzzer.h"
 
 //define the Nixi (ZM1000 or IN_4)
 #define IN_4
 
 RTC_DS1307 rtc;
-SHT21 SHT21;
+SHT21 sht;
 
 StaticJsonDocument<5000> doc;
 StaticJsonDocument<5000> docWeather;
@@ -48,6 +49,10 @@ uint8_t minute = 0;
 int8_t temp = 0;
 uint8_t humidity = 0;
 
+bool weather_check_wifi = false;
+int temp_wifi = 0;
+int humidity_wifi = 0;
+
 volatile unsigned long state_count = 0;
 
 uint32_t mode_count = 0;
@@ -75,6 +80,8 @@ unsigned int count_on = 0;
 
 void task_state(void *parameter);
 void task_ota(void *parameter);
+void task_wlan(void *parameter);
+char *substring(const char *str, size_t begin, size_t len);
 void stopwatch();
 void sht21();
 void offwatch();
@@ -85,7 +92,7 @@ unsigned int frequency = 1000;
 unsigned int duration = 1000;
 
 // setting PWM properties
-const int freq = 5000;
+const int freq = 15000;
 const int resolution = 10;
 void setup()
 {
@@ -93,14 +100,18 @@ void setup()
   Serial.begin(57600);
 
   rtc.begin();
-  SHT21.begin();
+  sht.begin();
 
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  if (!rtc.isrunning())
+  {
+    Serial.println("RTC is NOT running!");
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
 
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_WHITE, OUTPUT);
 
-  
   ledcSetup(LED_WHITE_CHANNEL, freq, resolution);
   ledcSetup(LED_RED_CHANNEL, freq, resolution);
 
@@ -190,11 +201,19 @@ void setup()
       NULL,      /* Parameter passed as input of the task */
       1,         /* Priority of the task. */
       NULL);     /* Task handle. */
+
+  xTaskCreate(
+      task_wlan,  /* Task function. */
+      "TaskWLAN", /* String with name of task. */
+      10000,      /* Stack size in bytes. */
+      NULL,       /* Parameter passed as input of the task */
+      1,          /* Priority of the task. */
+      NULL);      /* Task handle. */
 }
 
 void loop()
 {
-  delay(50);
+  delay(1000);
 
   //Get Sensor Data RTC
   DateTime now = rtc.now();
@@ -202,8 +221,8 @@ void loop()
   minute = now.minute();
 
   //Get Sensor Data SHT21
-  humidity = round(SHT21.getHumidity());
-  temp = round(SHT21.getTemperature());
+  humidity = round(sht.getHumidity());
+  temp = round(sht.getTemperature());
 }
 
 void task_state(void *parameter)
@@ -266,6 +285,89 @@ void task_ota(void *parameter)
   {
     ArduinoOTA.handle();
   }
+}
+
+void task_wlan(void *parameter)
+{
+  for (;;)
+  {
+    http.begin("http://worldtimeapi.org/api/timezone/Europe/Berlin.json"); //Specify the URL
+    int httpCodeTime = http.GET();
+
+    if (httpCodeTime > 0)
+    { //Check for the returning code
+
+      // Deserialize the JSON document
+      DeserializationError error = deserializeJson(doc, http.getString());
+
+      if (error)
+      {
+        Serial.print(F("deserializeJson() failed: "));
+        Serial.println(error.c_str());
+        vTaskDelay(2000); //2sec
+      }
+      else
+      {
+        const char *date = doc["datetime"]; //Get current time
+
+        size_t begin = 11;
+        size_t end = 12;
+
+        String houre = (String)substring(date, begin, end);
+
+        size_t begin_1 = 14;
+        size_t end_1 = 15;
+
+        String minute = (String)substring(date, begin_1, end_1);
+
+        rtc.adjust(DateTime(0, 0, 0, houre.toInt(), minute.toInt(), 0));
+
+        delay(500); //0.5sec
+      }
+    }
+    else
+    {
+      Serial.println("Error on HTTP request Time");
+    }
+
+    httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=3&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
+    int httpCodeWeather = httpWeather.GET();
+    weather_check_wifi = false;
+
+    if (httpCodeWeather > 0)
+    { //Check for the returning code
+
+      DeserializationError errorWeather = deserializeJson(docWeather, httpWeather.getString());
+
+      if (errorWeather)
+      {
+        Serial.print(F("deserializeJson() from weather failed: "));
+        Serial.println(errorWeather.c_str());
+        vTaskDelay(2000); //2sec
+      }
+      else
+      {
+
+        weather_check_wifi = true;
+        const int tempwifi = docWeather["list"][0]["main"]["temp"];         //Get current time forecast 0h
+        const int humiditywifi = docWeather["list"][0]["main"]["humidity"]; //Get current humidity forecast 0h
+
+        temp_wifi = tempwifi;
+        humidity_wifi = humiditywifi;
+
+        delay(500); //0.5sec
+      }
+    }
+    vTaskDelay(30000); //30sec
+  }
+}
+
+char *substring(const char *str, size_t begin, size_t len)
+{
+  if (str == 0 || strlen(str) == 0 || strlen(str) < begin || strlen(str) < (begin + len))
+    return 0;
+
+  return strndup(str + begin, len);
 }
 
 void offwatch()
@@ -395,30 +497,57 @@ void sht21()
   {
     temp = (int8_t)abs(temp);
 
-    NixiClock.writeSegment(0, SEGMENT_1);
-    NixiClock.writeSegment(0, SEGMENT_2);
-    NixiClock.writeSegment(temp / 10, SEGMENT_3);
-    NixiClock.writeSegment(temp % 10, SEGMENT_4);
+    NixiClock.writeSegment(0, SEGMENT_3);
+    NixiClock.writeSegment(0, SEGMENT_4);
+    NixiClock.writeSegment(temp / 10, SEGMENT_1);
+    NixiClock.writeSegment(temp % 10, SEGMENT_2);
     ledcWrite(LED_RED_CHANNEL, 0);
     ledcWrite(LED_WHITE_CHANNEL, 1024);
   }
   else
   {
+    NixiClock.writeSegment(10, SEGMENT_3);
+    NixiClock.writeSegment(10, SEGMENT_4);
+    NixiClock.writeSegment(temp / 10, SEGMENT_1);
+    NixiClock.writeSegment(temp % 10, SEGMENT_2);
+  }
 
-    NixiClock.writeSegment(10, SEGMENT_1);
-    NixiClock.writeSegment(10, SEGMENT_2);
-    NixiClock.writeSegment(temp / 10, SEGMENT_3);
-    NixiClock.writeSegment(temp % 10, SEGMENT_4);
-    ledcWrite(LED_WHITE_CHANNEL, 0);
-    ledcWrite(LED_RED_CHANNEL, 1024);
+  if (weather_check_wifi == true)
+  {
+    delay(1000);
+    if (temp_wifi <= 0)
+    {
+      temp_wifi = (int8_t)abs(temp_wifi);
+
+      NixiClock.writeSegment(temp_wifi / 10, SEGMENT_3);
+      NixiClock.writeSegment(temp_wifi % 10, SEGMENT_4);
+
+      ledcWrite(LED_RED_CHANNEL, 0);
+      ledcWrite(LED_WHITE_CHANNEL, 1024);
+    }
+    else
+    {
+      NixiClock.writeSegment(temp_wifi / 10, SEGMENT_3);
+      NixiClock.writeSegment(temp_wifi % 10, SEGMENT_4);
+
+      ledcWrite(LED_WHITE_CHANNEL, 0);
+      ledcWrite(LED_RED_CHANNEL, 1024);
+    }
   }
 
   delay(1500);
 
-  NixiClock.writeSegment(10, SEGMENT_1);
-  NixiClock.writeSegment(10, SEGMENT_2);
-  NixiClock.writeSegment(humidity / 10, SEGMENT_3);
-  NixiClock.writeSegment(humidity % 10, SEGMENT_4);
+  NixiClock.writeSegment(10, SEGMENT_3);
+  NixiClock.writeSegment(10, SEGMENT_4);
+  NixiClock.writeSegment(humidity / 10, SEGMENT_1);
+  NixiClock.writeSegment(humidity % 10, SEGMENT_2);
+
+  if (weather_check_wifi == true)
+  {
+    delay(1500);
+    NixiClock.writeSegment(humidity_wifi / 10, SEGMENT_3);
+    NixiClock.writeSegment(humidity_wifi % 10, SEGMENT_4);
+  }
 
   ledcWrite(LED_WHITE_CHANNEL, 1024);
   ledcWrite(LED_RED_CHANNEL, 0);
