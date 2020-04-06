@@ -390,7 +390,7 @@ void offwatch()
     {
       state = on;
       delay(500);
-      return;
+      break;
     }
     delay(10);
   }
@@ -466,7 +466,7 @@ void stopwatch()
     {
       state = normal_clock;
       delay(700);
-      return;
+      break;
     }
 
     if (count % 100 == 0)
