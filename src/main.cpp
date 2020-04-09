@@ -106,7 +106,7 @@ void setup()
   {
     Serial.println("RTC is NOT running!");
     // following line sets the RTC to the date & time this sketch was compiled
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
   pinMode(LED_RED, OUTPUT);
@@ -187,6 +187,14 @@ void setup()
   delay(1000);
 
   xTaskCreate(
+      task_wlan,  /* Task function. */
+      "TaskWLAN", /* String with name of task. */
+      10000,      /* Stack size in bytes. */
+      NULL,       /* Parameter passed as input of the task */
+      2,          /* Priority of the task. */
+      NULL);      /* Task handle. */
+
+  xTaskCreate(
       task_state,  /* Task function. */
       "TaskState", /* String with name of task. */
       10000,       /* Stack size in bytes. */
@@ -201,19 +209,10 @@ void setup()
       NULL,      /* Parameter passed as input of the task */
       1,         /* Priority of the task. */
       NULL);     /* Task handle. */
-
-  xTaskCreate(
-      task_wlan,  /* Task function. */
-      "TaskWLAN", /* String with name of task. */
-      10000,      /* Stack size in bytes. */
-      NULL,       /* Parameter passed as input of the task */
-      1,          /* Priority of the task. */
-      NULL);      /* Task handle. */
 }
 
 void loop()
 {
-  delay(1000);
 
   //Get Sensor Data RTC
   DateTime now = rtc.now();
@@ -223,6 +222,8 @@ void loop()
   //Get Sensor Data SHT21
   humidity = round(sht.getHumidity());
   temp = round(sht.getTemperature());
+
+  delay(10000);
 }
 
 void task_state(void *parameter)
@@ -304,6 +305,7 @@ void task_wlan(void *parameter)
       {
         Serial.print(F("deserializeJson() failed: "));
         Serial.println(error.c_str());
+        state = normal_clock;
         vTaskDelay(2000); //2sec
       }
       else
@@ -313,14 +315,14 @@ void task_wlan(void *parameter)
         size_t begin = 11;
         size_t end = 12;
 
-        String houre = (String)substring(date, begin, end);
+        String houre_wifi = (String)substring(date, begin, end);
 
         size_t begin_1 = 14;
         size_t end_1 = 15;
 
-        String minute = (String)substring(date, begin_1, end_1);
+        String minute_wifi = (String)substring(date, begin_1, end_1);
 
-        rtc.adjust(DateTime(0, 0, 0, houre.toInt(), minute.toInt(), 0));
+        rtc.adjust(DateTime(2014, 1, 21, houre_wifi.toInt(), minute_wifi.toInt(), 0));
 
         delay(500); //0.5sec
       }
@@ -343,6 +345,7 @@ void task_wlan(void *parameter)
       {
         Serial.print(F("deserializeJson() from weather failed: "));
         Serial.println(errorWeather.c_str());
+        state = normal_clock;
         vTaskDelay(2000); //2sec
       }
       else
@@ -358,6 +361,7 @@ void task_wlan(void *parameter)
         delay(500); //0.5sec
       }
     }
+    state = normal_clock;
     vTaskDelay(30000); //30sec
   }
 }
