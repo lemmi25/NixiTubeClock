@@ -80,7 +80,7 @@ unsigned int count_on = 0;
 
 void task_state(void *parameter);
 void task_ota(void *parameter);
-void task_wlan(void *parameter);
+void task_wlan();
 char *substring(const char *str, size_t begin, size_t len);
 void stopwatch();
 void sht21();
@@ -106,7 +106,7 @@ void setup()
   {
     Serial.println("RTC is NOT running!");
     // following line sets the RTC to the date & time this sketch was compiled
-    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
   pinMode(LED_RED, OUTPUT);
@@ -187,14 +187,6 @@ void setup()
   delay(1000);
 
   xTaskCreate(
-      task_wlan,  /* Task function. */
-      "TaskWLAN", /* String with name of task. */
-      10000,      /* Stack size in bytes. */
-      NULL,       /* Parameter passed as input of the task */
-      2,          /* Priority of the task. */
-      NULL);      /* Task handle. */
-
-  xTaskCreate(
       task_state,  /* Task function. */
       "TaskState", /* String with name of task. */
       10000,       /* Stack size in bytes. */
@@ -211,6 +203,7 @@ void setup()
       NULL);     /* Task handle. */
 }
 
+int count_wlan = 0;
 void loop()
 {
 
@@ -219,9 +212,18 @@ void loop()
   hour = now.hour();
   minute = now.minute();
 
+  state = normal_clock;
+
   //Get Sensor Data SHT21
   humidity = round(sht.getHumidity());
   temp = round(sht.getTemperature());
+
+  if (count_wlan % 3 == 0)
+  {
+    task_wlan();
+  }
+
+  count_wlan++;
 
   delay(10000);
 }
@@ -288,82 +290,82 @@ void task_ota(void *parameter)
   }
 }
 
-void task_wlan(void *parameter)
+void task_wlan()
 {
-  for (;;)
-  {
-    http.begin("http://worldtimeapi.org/api/timezone/Europe/Berlin.json"); //Specify the URL
-    int httpCodeTime = http.GET();
 
-    if (httpCodeTime > 0)
-    { //Check for the returning code
+  http.begin("http://worldtimeapi.org/api/timezone/Europe/Berlin.json"); //Specify the URL
+  int httpCodeTime = http.GET();
 
-      // Deserialize the JSON document
-      DeserializationError error = deserializeJson(doc, http.getString());
+  if (httpCodeTime > 0)
+  { //Check for the returning code
 
-      if (error)
-      {
-        Serial.print(F("deserializeJson() failed: "));
-        Serial.println(error.c_str());
-        state = normal_clock;
-        vTaskDelay(2000); //2sec
-      }
-      else
-      {
-        const char *date = doc["datetime"]; //Get current time
+    // Deserialize the JSON document
+    DeserializationError error = deserializeJson(doc, http.getString());
 
-        size_t begin = 11;
-        size_t end = 12;
-
-        String houre_wifi = (String)substring(date, begin, end);
-
-        size_t begin_1 = 14;
-        size_t end_1 = 15;
-
-        String minute_wifi = (String)substring(date, begin_1, end_1);
-
-        rtc.adjust(DateTime(2014, 1, 21, houre_wifi.toInt(), minute_wifi.toInt(), 0));
-
-        delay(500); //0.5sec
-      }
+    if (error)
+    {
+      Serial.print(F("deserializeJson() failed: "));
+      Serial.println(error.c_str());
+      state = normal_clock;
+      return;
+      vTaskDelay(2000); //2sec
     }
     else
     {
-      Serial.println("Error on HTTP request Time");
+      const char *date = doc["datetime"]; //Get current time
+
+      size_t begin = 11;
+      size_t end = 12;
+
+      String houre_wifi = (String)substring(date, begin, end);
+
+      size_t begin_1 = 14;
+      size_t end_1 = 15;
+
+      String minute_wifi = (String)substring(date, begin_1, end_1);
+
+      rtc.adjust(DateTime(2014, 1, 21, houre_wifi.toInt(), minute_wifi.toInt(), 0));
+
+      delay(500); //0.5sec
     }
-
-    httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=3&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
-    int httpCodeWeather = httpWeather.GET();
-    weather_check_wifi = false;
-
-    if (httpCodeWeather > 0)
-    { //Check for the returning code
-
-      DeserializationError errorWeather = deserializeJson(docWeather, httpWeather.getString());
-
-      if (errorWeather)
-      {
-        Serial.print(F("deserializeJson() from weather failed: "));
-        Serial.println(errorWeather.c_str());
-        state = normal_clock;
-        vTaskDelay(2000); //2sec
-      }
-      else
-      {
-
-        weather_check_wifi = true;
-        const int tempwifi = docWeather["list"][0]["main"]["temp"];         //Get current time forecast 0h
-        const int humiditywifi = docWeather["list"][0]["main"]["humidity"]; //Get current humidity forecast 0h
-
-        temp_wifi = tempwifi;
-        humidity_wifi = humiditywifi;
-
-        delay(500); //0.5sec
-      }
-    }
-    state = normal_clock;
-    vTaskDelay(30000); //30sec
   }
+  else
+  {
+    Serial.println("Error on HTTP request Time");
+  }
+
+  httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=3&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
+  int httpCodeWeather = httpWeather.GET();
+  weather_check_wifi = false;
+
+  if (httpCodeWeather > 0)
+  { //Check for the returning code
+
+    DeserializationError errorWeather = deserializeJson(docWeather, httpWeather.getString());
+
+    if (errorWeather)
+    {
+      Serial.print(F("deserializeJson() from weather failed: "));
+      Serial.println(errorWeather.c_str());
+      state = normal_clock;
+      return;
+      vTaskDelay(2000); //2sec
+    }
+    else
+    {
+
+      weather_check_wifi = true;
+      const int tempwifi = docWeather["list"][0]["main"]["temp"];         //Get current time forecast 0h
+      const int humiditywifi = docWeather["list"][0]["main"]["humidity"]; //Get current humidity forecast 0h
+
+      temp_wifi = tempwifi;
+      humidity_wifi = humiditywifi;
+
+      delay(500); //0.5sec
+    }
+  }
+  state = normal_clock;
+  //vTaskDelay(30000); //30sec
 }
 
 char *substring(const char *str, size_t begin, size_t len)
