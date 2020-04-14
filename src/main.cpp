@@ -85,7 +85,7 @@ char *substring(const char *str, size_t begin, size_t len);
 void stopwatch();
 void sht21();
 void offwatch();
-void normalwatch();
+void normalwatch(uint8_t hour, uint8_t minute);
 void IRAM_ATTR isr_mode();
 
 unsigned int frequency = 1000;
@@ -97,17 +97,10 @@ const int resolution = 10;
 void setup()
 {
 
-  Serial.begin(57600);
+  Serial.begin(9600);
 
-  rtc.begin();
   sht.begin();
-
-  if (!rtc.isrunning())
-  {
-    Serial.println("RTC is NOT running!");
-    // following line sets the RTC to the date & time this sketch was compiled
-    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  }
+  rtc.begin();
 
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_WHITE, OUTPUT);
@@ -137,8 +130,6 @@ void setup()
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
     Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
   }
   // Hostname defaults to esp3232-[MAC]
   ArduinoOTA.setHostname("OTA ESP32");
@@ -186,11 +177,6 @@ void setup()
   NixiClock.off();
   delay(1000);
 
-  DateTime now = rtc.now();
-  hour = now.hour();
-  minute = now.minute();
-  normalwatch();
-
   xTaskCreate(
       task_state,  /* Task function. */
       "TaskState", /* String with name of task. */
@@ -208,7 +194,7 @@ void setup()
       NULL);     /* Task handle. */
 }
 
-int count_wlan = 1;
+int count_wlan = 0;
 void loop()
 {
 
@@ -223,14 +209,14 @@ void loop()
   humidity = round(sht.getHumidity());
   temp = round(sht.getTemperature());
 
-  if (count_wlan % 3 == 0)
+  if (count_wlan % 30 == 0)
   {
     task_wlan();
   }
 
   count_wlan++;
 
-  delay(10000);
+  delay(1000);
 }
 
 void task_state(void *parameter)
@@ -281,7 +267,7 @@ void task_state(void *parameter)
     }
     else if (state == on || state == normal_clock)
     {
-      normalwatch();
+      normalwatch(hour, minute);
     }
   }
 }
@@ -408,7 +394,7 @@ void offwatch()
   interrupts();
 }
 
-void normalwatch()
+void normalwatch(uint8_t hour, uint8_t minute)
 {
   if (digitalRead(BTN_ON) == 0)
   {
