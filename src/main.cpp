@@ -189,6 +189,7 @@ void setup()
   DateTime now = rtc.now();
   hour = now.hour();
   minute = now.minute();
+  normalwatch();
 
   xTaskCreate(
       task_state,  /* Task function. */
@@ -207,7 +208,7 @@ void setup()
       NULL);     /* Task handle. */
 }
 
-int count_wlan = 0;
+int count_wlan = 1;
 void loop()
 {
 
