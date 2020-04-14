@@ -106,7 +106,7 @@ void setup()
   {
     Serial.println("RTC is NOT running!");
     // following line sets the RTC to the date & time this sketch was compiled
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }
 
   pinMode(LED_RED, OUTPUT);
@@ -185,6 +185,10 @@ void setup()
   NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
   NixiClock.off();
   delay(1000);
+
+  DateTime now = rtc.now();
+  hour = now.hour();
+  minute = now.minute();
 
   xTaskCreate(
       task_state,  /* Task function. */
