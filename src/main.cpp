@@ -129,7 +129,9 @@ void setup()
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
-    Serial.println("Connection Failed! Rebooting...");
+    Serial.println("Connection Failed!");
+    delay(2000);
+    break;
   }
   // Hostname defaults to esp3232-[MAC]
   ArduinoOTA.setHostname("OTA ESP32");
