@@ -96,11 +96,11 @@ const int freq = 15000;
 const int resolution = 10;
 void setup()
 {
-
   Serial.begin(9600);
 
-  sht.begin();
   rtc.begin();
+  delay(200);
+  sht.begin();
 
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_WHITE, OUTPUT);
@@ -175,9 +175,9 @@ void setup()
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
-  NixiClock.off();
-  delay(1000);
+  //NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
+  //NixiClock.off();
+  //delay(1000);
 
   xTaskCreate(
       task_state,  /* Task function. */
@@ -204,8 +204,6 @@ void loop()
   DateTime now = rtc.now();
   hour = now.hour();
   minute = now.minute();
-
-  state = normal_clock;
 
   //Get Sensor Data SHT21
   humidity = round(sht.getHumidity());
