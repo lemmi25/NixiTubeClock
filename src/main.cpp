@@ -88,11 +88,11 @@ void offwatch();
 void normalwatch(uint8_t hour, uint8_t minute);
 void IRAM_ATTR isr_mode();
 
-unsigned int frequency = 1000;
-unsigned int duration = 1000;
+//unsigned int frequency = 1000;
+//unsigned int duration = 1000;
 
 // setting PWM properties
-const int freq = 15000;
+const int freq = 150000;
 const int resolution = 10;
 void setup()
 {
@@ -117,12 +117,12 @@ void setup()
   attachInterrupt(BTN_MODE, isr_mode, FALLING);
   //pinMode(BTN_MODE, INPUT);
 
-  EasyBuzzer.setPin(18);
+  //EasyBuzzer.setPin(18);
 
-  EasyBuzzer.singleBeep(
-      frequency, // Frequency in hertz(HZ).
-      duration   // Duration of the beep in milliseconds(ms).
-  );
+  //EasyBuzzer.singleBeep(
+  //    frequency, // Frequency in hertz(HZ).
+  //    duration   // Duration of the beep in milliseconds(ms).
+  //);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin("WLAN-164097", "4028408165188671");

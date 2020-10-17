@@ -1,9 +1,9 @@
 \documentclass[a4paper,12pt]{article}
-\title{Anleitung für ZM1000 Nixi Uhr}
+\title{\textbf{Anleitung für ZM1000 Nixi Uhr \newline Von Moritz für Mama}}
 
 \usepackage{graphicx}
 \usepackage{subcaption}
-
+\usepackage{multirow}
 \usepackage{xcolor,colortbl}
 
 \newcommand{\mc}[2]{\multicolumn{#1}{c}{#2}}
@@ -20,6 +20,8 @@
     \centering
     \includegraphics[width=1\textwidth]{Clock.jpg}
 \end{figure}
+
+
 
 \newpage
 
@@ -41,21 +43,30 @@ Die Uhr hat einen \textbf{Power Button} und einen \textbf{Funktions Button} beid
 
 \section{Funktion}
 
-\begin{tabular}[h]{|a|b|a|b|}
+\begin{center}
+\begin{tabular}[h]{|p{1.3cm}|p{3cm}|p{3cm}|p{6cm}|}
     \hline
     \rowcolor{LightCyan}
-    Knopf & Funktion & Druckdauer & Kommentar \\
+    \multirow{2}{*}{\textbf{Knopf}} & \multirow{2}{*}{\textbf{Funktion}} & \multirow{2}{*}{\textbf{Druckdauer}} & \multirow{2}{*}{\textbf{Uhrzeit anzeigen}} \\
+    &  &  & \\
     \hline
-    \includegraphics[0.08\textwidth]{Power_BTN.png} & standby & kurz& Beenden durch erneutes drücken\\
+    \multirow{3}{*}{\includegraphics[\textwidth]{Power_BTN.png}} & \multirow{3}{*}{Standby} & \multirow{3}{*}{kurz} & \multirow{3}{*}{Erneutes drücken} \\
+     &  &  & \\
+     &  &  & \\
     \hline
-    \includegraphics[0.08\textwidth]{Push_BTN.png} & Temp. und Luftf. & kurz & Automatisches beenden \\
+    \multirow{3}{*}{\includegraphics[\textwidth]{Push_BTN.png}} & \multirow{3}{*}{Temp. \& Luftf.} & \multirow{3}{*}{kurz} & \multirow{3}{*}{Automatisches Ende} \\
+     &  &  & \\
+     &  &  & \\
     \hline
-    \includegraphics[0.08\textwidth]{Push_BTN.png} & Stoppuhr &lang& Beenden durch drücken des Power Button\\
+    \multirow{3}{*}{\includegraphics[\textwidth]{Push_BTN.png}} & \multirow{3}{*}{Stoppuhr} & \multirow{3}{*}{lang} & \multirow{3}{*}{Power Button drücken} \\
+     &  &  & \\
+     &  &  & \\
     \hline
 \end{tabular}
+\end{center}
 
 \section{Internetverbindung}
 
-Ist die verbinfung zum INternet gegeben wird bei der Anzeige der Temperatur und Luftfeuchtigkeit bei den letzten beiden Ziffern die Aussentemperatur angezeigt.
+Ist die Verbindung zum Internet gegeben wird bei der Anzeige der Temperatur und Luftfeuchtigkeit bei den letzten beiden Ziffern die Aussentemperatur angezeigt.
   
 \end{document}
