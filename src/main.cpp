@@ -11,7 +11,7 @@
 #include "EasyBuzzer.h"
 
 //define the Nixi (ZM1000 or IN_4)
-#define IN_4
+#define ZM1000
 
 RTC_DS1307 rtc;
 SHT21 sht;
@@ -125,7 +125,7 @@ void setup()
   //);
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin("MAJA", "39379726621095305779");
+  WiFi.begin("iphone", "Lutschpuffer");
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
