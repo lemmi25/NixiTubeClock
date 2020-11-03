@@ -11,7 +11,7 @@
 #include "EasyBuzzer.h"
 
 //define the Nixi (ZM1000 or IN_4)
-#define ZM1000
+#define IN_4
 
 RTC_DS1307 rtc;
 SHT21 sht;
@@ -125,7 +125,7 @@ void setup()
   //);
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin("WLAN-164097", "4028408165188671");
+  WiFi.begin("MAJA", "39379726621095305779");
 
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
@@ -325,7 +325,7 @@ void task_wlan()
     Serial.println("Error on HTTP request Time");
   }
 
-  httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Uslar,de&cnt=3&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
+  httpWeather.begin("http://api.openweathermap.org/data/2.5/forecast?q=Freiburg,de&cnt=3&units=metric&appid=03e2fbe874af4836c6bf932b697a809b");
   int httpCodeWeather = httpWeather.GET();
   weather_check_wifi = false;
 
