@@ -315,7 +315,12 @@ void task_wlan()
 
       String minute_wifi = (String)substring(date, begin_1, end_1);
 
-      rtc.adjust(DateTime(2014, 1, 21, houre_wifi.toInt(), minute_wifi.toInt(), 0));
+      size_t begin_2 = 18;
+      size_t end_2 = 19;
+
+      String second_wifi = (String)substring(date, begin_2, end_2);
+
+      rtc.adjust(DateTime(2014, 1, 21, houre_wifi.toInt(), minute_wifi.toInt(), second_wifi.toInt()));
 
       delay(500); //0.5sec
     }
