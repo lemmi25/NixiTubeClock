@@ -125,12 +125,13 @@ void setup()
   //);
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin("iphone", "Lutschpuffer");
+  WiFi.begin("**", "**");
 
+
+  delay(2000);
   while (WiFi.waitForConnectResult() != WL_CONNECTED)
   {
     Serial.println("Connection Failed!");
-    delay(2000);
     break;
   }
   // Hostname defaults to esp3232-[MAC]
@@ -194,6 +195,8 @@ void setup()
       NULL,      /* Parameter passed as input of the task */
       1,         /* Priority of the task. */
       NULL);     /* Task handle. */
+
+
 }
 
 int count_wlan = 0;
@@ -205,9 +208,17 @@ void loop()
   hour = now.hour();
   minute = now.minute();
 
+ /*    Serial.print(now.hour(), DEC);
+    Serial.print(':');
+    Serial.print(now.minute(), DEC);
+    Serial.print(':');
+    Serial.print(now.second(), DEC);
+    Serial.println(); */
+
   //Get Sensor Data SHT21
   humidity = round(sht.getHumidity());
   temp = round(sht.getTemperature());
+
 
   if (count_wlan % 30 == 0)
   {
@@ -306,19 +317,16 @@ void task_wlan()
       const char *date = doc["datetime"]; //Get current time
 
       size_t begin = 11;
-      size_t end = 12;
 
-      String houre_wifi = (String)substring(date, begin, end);
+      String houre_wifi = (String)substring(date, begin, 2);
 
       size_t begin_1 = 14;
-      size_t end_1 = 15;
 
-      String minute_wifi = (String)substring(date, begin_1, end_1);
+      String minute_wifi = (String)substring(date, begin_1, 2);
 
-      size_t begin_2 = 18;
-      size_t end_2 = 19;
+      size_t begin_2 = 17;
 
-      String second_wifi = (String)substring(date, begin_2, end_2);
+      String second_wifi = (String)substring(date, begin_2, 2);
 
       rtc.adjust(DateTime(2014, 1, 21, houre_wifi.toInt(), minute_wifi.toInt(), second_wifi.toInt()));
 
