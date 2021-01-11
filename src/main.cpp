@@ -1,6 +1,6 @@
 /* Code written by Moritz Boesenberg 26/12/2019 under the MIT licence */
 
-#include <nixiDriver.h>
+#include <tubeDriver.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
@@ -10,8 +10,8 @@
 #include <string.h>
 #include "EasyBuzzer.h"
 
-//define the Nixi (ZM1000 or IN_4)
-#define ZM1000
+//define the Nixi/Numitron (ZM1000 or IN_4 or DA2000)
+#define DA2000
 
 RTC_DS1307 rtc;
 SHT21 sht;
@@ -19,13 +19,20 @@ SHT21 sht;
 StaticJsonDocument<5000> doc;
 StaticJsonDocument<5000> docWeather;
 
-nixiDriver NixiClock(4, 5, 2);
+#ifdef DA2000
+unsigned int SEGMENT_1 = 4;
+unsigned int SEGMENT_2 = 3;
+unsigned int SEGMENT_3 = 2;
+unsigned int SEGMENT_4 = 1;
+boolean numitron = true;
+#endif
 
 #ifdef IN_4
 unsigned int SEGMENT_1 = 3;
 unsigned int SEGMENT_2 = 4;
 unsigned int SEGMENT_3 = 2;
 unsigned int SEGMENT_4 = 1;
+boolean numitron = false;
 #endif
 
 #ifdef ZM1000
@@ -33,7 +40,10 @@ unsigned int SEGMENT_1 = 1;
 unsigned int SEGMENT_2 = 2;
 unsigned int SEGMENT_3 = 3;
 unsigned int SEGMENT_4 = 4;
+boolean numitron = false;
 #endif
+
+tubeDriver TubeClock(4, 5, 2, numitron);
 
 unsigned int BTN_ON = 3;
 unsigned int BTN_MODE = 15;
@@ -125,7 +135,7 @@ void setup()
   //);
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin("**", "**");
+  WiFi.begin("iphone", "Lutschpuffer");
 
 
   delay(2000);
@@ -176,8 +186,8 @@ void setup()
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  NixiClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
-  NixiClock.off();
+  TubeClock.bootUp(); //Show Segment from 0 to 9 with 500mil delay
+  TubeClock.off();
   delay(1000);
 
   xTaskCreate(
@@ -390,7 +400,7 @@ void offwatch()
     delay(5);
   }
 
-  NixiClock.off();
+  TubeClock.off();
   delay(1000);
 
   noInterrupts();
@@ -424,13 +434,13 @@ void normalwatch(uint8_t hour, uint8_t minute)
     }
 
     delay(20);
-    NixiClock.writeSegment(hour / 10, SEGMENT_1);
+    TubeClock.writeSegment(hour / 10, SEGMENT_1);
     delay(5);
-    NixiClock.writeSegment(hour % 10, SEGMENT_2);
+    TubeClock.writeSegment(hour % 10, SEGMENT_2);
     delay(5);
-    NixiClock.writeSegment(minute / 10, SEGMENT_3);
+    TubeClock.writeSegment(minute / 10, SEGMENT_3);
     delay(5);
-    NixiClock.writeSegment(minute % 10, SEGMENT_4);
+    TubeClock.writeSegment(minute % 10, SEGMENT_4);
     delay(20);
 
     for (int i = 1024; i >= 70; --i)
@@ -444,10 +454,10 @@ void normalwatch(uint8_t hour, uint8_t minute)
 
   if (count_on % 10 == 0)
   {
-    NixiClock.writeSegment(hour / 10, SEGMENT_1);
-    NixiClock.writeSegment(hour % 10, SEGMENT_2);
-    NixiClock.writeSegment(minute / 10, SEGMENT_3);
-    NixiClock.writeSegment(minute % 10, SEGMENT_4);
+    TubeClock.writeSegment(hour / 10, SEGMENT_1);
+    TubeClock.writeSegment(hour % 10, SEGMENT_2);
+    TubeClock.writeSegment(minute / 10, SEGMENT_3);
+    TubeClock.writeSegment(minute % 10, SEGMENT_4);
   }
 
   ledcWrite(LED_RED_CHANNEL, 70);
@@ -486,10 +496,10 @@ void stopwatch()
 
       m = sec / 60;
       s = (sec - (m * 60));
-      NixiClock.writeSegment(m / 10, SEGMENT_1);
-      NixiClock.writeSegment(m % 10, SEGMENT_2);
-      NixiClock.writeSegment(s / 10, SEGMENT_3);
-      NixiClock.writeSegment(s % 10, SEGMENT_4);
+      TubeClock.writeSegment(m / 10, SEGMENT_1);
+      TubeClock.writeSegment(m % 10, SEGMENT_2);
+      TubeClock.writeSegment(s / 10, SEGMENT_3);
+      TubeClock.writeSegment(s % 10, SEGMENT_4);
 
       sec++;
       toggle_led_white = !toggle_led_white;
@@ -507,19 +517,19 @@ void sht21()
   {
     temp = (int8_t)abs(temp);
 
-    NixiClock.writeSegment(0, SEGMENT_3);
-    NixiClock.writeSegment(0, SEGMENT_4);
-    NixiClock.writeSegment(temp / 10, SEGMENT_1);
-    NixiClock.writeSegment(temp % 10, SEGMENT_2);
+    TubeClock.writeSegment(0, SEGMENT_3);
+    TubeClock.writeSegment(0, SEGMENT_4);
+    TubeClock.writeSegment(temp / 10, SEGMENT_1);
+    TubeClock.writeSegment(temp % 10, SEGMENT_2);
     ledcWrite(LED_RED_CHANNEL, 0);
     ledcWrite(LED_WHITE_CHANNEL, 1024);
   }
   else
   {
-    NixiClock.writeSegment(10, SEGMENT_3);
-    NixiClock.writeSegment(10, SEGMENT_4);
-    NixiClock.writeSegment(temp / 10, SEGMENT_1);
-    NixiClock.writeSegment(temp % 10, SEGMENT_2);
+    TubeClock.writeSegment(10, SEGMENT_3);
+    TubeClock.writeSegment(10, SEGMENT_4);
+    TubeClock.writeSegment(temp / 10, SEGMENT_1);
+    TubeClock.writeSegment(temp % 10, SEGMENT_2);
   }
 
   if (weather_check_wifi == true)
@@ -529,16 +539,16 @@ void sht21()
     {
       temp_wifi = (int8_t)abs(temp_wifi);
 
-      NixiClock.writeSegment(temp_wifi / 10, SEGMENT_3);
-      NixiClock.writeSegment(temp_wifi % 10, SEGMENT_4);
+      TubeClock.writeSegment(temp_wifi / 10, SEGMENT_3);
+      TubeClock.writeSegment(temp_wifi % 10, SEGMENT_4);
 
       ledcWrite(LED_RED_CHANNEL, 0);
       ledcWrite(LED_WHITE_CHANNEL, 1024);
     }
     else
     {
-      NixiClock.writeSegment(temp_wifi / 10, SEGMENT_3);
-      NixiClock.writeSegment(temp_wifi % 10, SEGMENT_4);
+      TubeClock.writeSegment(temp_wifi / 10, SEGMENT_3);
+      TubeClock.writeSegment(temp_wifi % 10, SEGMENT_4);
 
       ledcWrite(LED_WHITE_CHANNEL, 0);
       ledcWrite(LED_RED_CHANNEL, 1024);
@@ -547,16 +557,16 @@ void sht21()
 
   delay(1500);
 
-  NixiClock.writeSegment(10, SEGMENT_3);
-  NixiClock.writeSegment(10, SEGMENT_4);
-  NixiClock.writeSegment(humidity / 10, SEGMENT_1);
-  NixiClock.writeSegment(humidity % 10, SEGMENT_2);
+  TubeClock.writeSegment(10, SEGMENT_3);
+  TubeClock.writeSegment(10, SEGMENT_4);
+  TubeClock.writeSegment(humidity / 10, SEGMENT_1);
+  TubeClock.writeSegment(humidity % 10, SEGMENT_2);
 
   if (weather_check_wifi == true)
   {
     delay(1500);
-    NixiClock.writeSegment(humidity_wifi / 10, SEGMENT_3);
-    NixiClock.writeSegment(humidity_wifi % 10, SEGMENT_4);
+    TubeClock.writeSegment(humidity_wifi / 10, SEGMENT_3);
+    TubeClock.writeSegment(humidity_wifi % 10, SEGMENT_4);
   }
 
   ledcWrite(LED_WHITE_CHANNEL, 1024);
