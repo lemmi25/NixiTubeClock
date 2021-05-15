@@ -10,7 +10,8 @@
 #include <string.h>
 #include "EasyBuzzer.h"
 
-//define the Nixi/Numitron (ZM1000 or IN_4 or DA2000)
+//define the Nixi/Numitron (ZM1000 or IN_4 or DA2000 or IN-9)
+//remember to comment temp and hum sensor in and out id assembled or not
 #define DA2000
 
 RTC_DS1307 rtc;
@@ -226,8 +227,8 @@ void loop()
     Serial.println(); */
 
   //Get Sensor Data SHT21
-  humidity = round(sht.getHumidity());
-  temp = round(sht.getTemperature());
+  //humidity = round(sht.getHumidity());
+  //temp = round(sht.getTemperature());
 
 
   if (count_wlan % 30 == 0)
