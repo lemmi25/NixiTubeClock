@@ -219,13 +219,13 @@ void loop()
   hour = now.hour();
   minute = now.minute();
 
- Serial.print(now.hour(), DEC);
- Serial.print(':');
- Serial.print(now.minute(), DEC);
- Serial.print(':');
- Serial.print(now.second(), DEC);
- Serial.println();
-
+  //Serial.print(now.hour(), DEC);
+  //Serial.print(':');
+  //Serial.print(now.minute(), DEC);
+  //Serial.print(':');
+  //Serial.print(now.second(), DEC);
+  //Serial.println();
+ 
   //Get Sensor Data SHT21
   //humidity = round(sht.getHumidity());
   //temp = round(sht.getTemperature());
@@ -340,15 +340,15 @@ void task_wlan()
 
       String second_wifi = (String)substring(date, begin_2, 2);
 
-      Serial.println("==== RTOS ====");
-      Serial.println(houre_wifi);
-      Serial.println(minute_wifi);
-      Serial.println(second_wifi);
-      Serial.println("==== RTOS ====");
+      //Serial.println("==== RTOS ====");
+      //Serial.println(houre_wifi);
+      //Serial.println(minute_wifi);
+      //Serial.println(second_wifi);
+      //Serial.println("==== RTOS ====");
 
       rtc.adjust(DateTime(2014, 1, 21, houre_wifi.toInt(), minute_wifi.toInt(), second_wifi.toInt()));
 
-      delay(5); //0.5sec
+      delay(5); //0.005sec
     }
   }
   else
