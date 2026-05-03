@@ -11,6 +11,7 @@
 #include <Preferences.h>
 #include <WiFiUdp.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <clock_provisioning.h>
 
@@ -39,7 +40,7 @@
 // The city parameter will be appended to this base URL in buildTimeApiUrlForCity()
 // Supported continents: Africa, America, Asia, Atlantic, Australia, Europe, Indian, Pacific
 #ifndef TIME_API_BASE
-#define TIME_API_BASE "http://worldtimeapi.org/api/timezone"
+#define TIME_API_BASE "https://timeapi.io/api/Time/current/zone?timeZone="
 #endif
 
 // Force provisioning portal on every boot (1=yes, 0=only if config invalid)
@@ -77,7 +78,8 @@ static void saveClockConfig(const ClockConfig &config)
 void loadClockConfig(ClockConfig &config)
 {
   Preferences prefs;
-  prefs.begin(PREF_NAMESPACE, true); // true = read-only mode
+  // Use read-write open so first boot does not log nvs_open NOT_FOUND for missing namespace.
+  prefs.begin(PREF_NAMESPACE, false);
   config.ssid = prefs.getString("ssid", "");       // Empty string if not found
   config.password = prefs.getString("pass", "");   // Empty string if not found
   config.city = prefs.getString("city", "");       // Empty string if not found
@@ -129,21 +131,31 @@ bool connectConfiguredWifi(const ClockConfig &config, uint32_t timeoutMs)
 // Build complete URL for time API request
 // IMPORTANT: The city input MUST include continent prefix in format "Continent/City"
 // Examples:
-//   buildTimeApiUrlForCity("Europe/Berlin") -> "http://worldtimeapi.org/api/timezone/Europe/Berlin.json"
-//   buildTimeApiUrlForCity("America/New_York") -> "http://worldtimeapi.org/api/timezone/America/New_York.json"
-//   buildTimeApiUrlForCity("Asia/Tokyo") -> "http://worldtimeapi.org/api/timezone/Asia/Tokyo.json"
-//   buildTimeApiUrlForCity("Australia/Sydney") -> "http://worldtimeapi.org/api/timezone/Australia/Sydney.json"
+//   buildTimeApiUrlForCity("Europe/Berlin") -> "https://worldtimeapi.org/api/timezone/Europe/Berlin.json"
+//   buildTimeApiUrlForCity("America/New_York") -> "https://worldtimeapi.org/api/timezone/America/New_York.json"
+//   buildTimeApiUrlForCity("Asia/Tokyo") -> "https://worldtimeapi.org/api/timezone/Asia/Tokyo.json"
+//   buildTimeApiUrlForCity("Australia/Sydney") -> "https://worldtimeapi.org/api/timezone/Australia/Sydney.json"
 // List of all supported timezones: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+//   buildTimeApiUrlForCity("Europe/Berlin") -> "https://timeapi.io/api/Time/current/zone?timeZone=Europe/Berlin"
+//   buildTimeApiUrlForCity("America/New_York") -> "https://timeapi.io/api/Time/current/zone?timeZone=America/New_York"
 String buildTimeApiUrlForCity(const String &city)
 {
   String safeCity = sanitizeCity(city); // Replace spaces with underscores
   String url = TIME_API_BASE;
+  if (url.endsWith("="))
+  {
+    url += safeCity;
+    return url;
+  }
   if (!url.endsWith("/"))
   {
     url += "/"; // Ensure base URL ends with /
   }
   url += safeCity;
-  url += ".json";
+  if (url.indexOf("worldtimeapi.org") >= 0)
+  {
+    url += ".json";
+  }
   return url;
 }
 
@@ -249,6 +261,19 @@ public:
 
 // Global DNS server instance
 static CaptiveDNSServer dnsServer;
+static ClockConfig pendingConfig;
+static String pendingFormattedTime;
+static bool hasPendingConfig = false;
+
+// Convert API datetime into a compact user-facing format: YYYY-MM-DD HH:MM:SS
+static String formatDateTimeForDisplay(const String &raw)
+{
+  if (raw.length() >= 19 && raw[4] == '-' && raw[7] == '-' && raw[10] == 'T')
+  {
+    return raw.substring(0, 10) + " " + raw.substring(11, 19);
+  }
+  return raw;
+}
 
 // Main provisioning portal function
 // Creates WiFi hotspot with web server for configuration
@@ -287,9 +312,9 @@ void runProvisioningPortalUntilConfigured()
   server.on("/save", HTTP_GET, [&server]() {
     // Build HTML form for user input with helpful instructions and examples
     String html;
-    html += "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
+    html += "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
     html += "<title>NixiClock Setup</title></head><body style='font-family:sans-serif;max-width:480px;margin:24px auto;padding:0 12px;'>";
-    html += "<h2>🌍 NixiClock WiFi Setup</h2>";
+    html += "<h2>NixiClock WiFi Setup</h2>";
     html += "<p>Configure your clock to connect to your WiFi network and set your timezone.</p>";
     html += "<form method='POST' action='/save'>";
     html += "<label><strong>WiFi SSID</strong> (your router/network name)</label><br>";
@@ -301,7 +326,7 @@ void runProvisioningPortalUntilConfigured()
     html += "<button type='submit' style='padding:10px 16px;width:100%;cursor:pointer;background:#4CAF50;color:white;border:none;border-radius:4px;font-size:16px;font-weight:bold;'>Save & Test Connection</button>";
     html += "</form>";
     html += "<div style='background:#f0f0f0;padding:12px;border-radius:4px;margin-top:20px;font-size:12px;'>";
-    html += "<strong>📍 Timezone Examples:</strong><br>";
+    html += "<strong>Timezone Examples:</strong><br>";
     html += "Europe: Europe/Berlin, Europe/London, Europe/Paris<br>";
     html += "America: America/New_York, America/Chicago, America/Los_Angeles<br>";
     html += "Asia: Asia/Tokyo, Asia/Shanghai, Asia/Dubai<br>";
@@ -331,7 +356,7 @@ void runProvisioningPortalUntilConfigured()
     // This prevents saving empty or incomplete configurations
     if (!cfg.isValid())
     {
-      server.send(400, "text/plain", "Error: Please fill in all fields:\n- WiFi SSID (your network name)\n- WiFi Password\n- Timezone (format: Europe/Berlin)");
+      server.send(400, "text/plain", "Error: Please fill in valid values:\n- WiFi SSID (your network name)\n- WiFi Password\n- Timezone in Continent/City format (example: Europe/Berlin)");
       return;  // Stop processing and ask user to fill in all fields
     }
 
@@ -341,9 +366,10 @@ void runProvisioningPortalUntilConfigured()
     WiFi.begin(cfg.ssid.c_str(), cfg.password.c_str()); // Connect to user's router
 
     // Status messages to display on confirmation page
-    String wifiStatus = "❌ Failed to connect to WiFi";
-    String timeStatus = "⏳ Skipped (WiFi not available)";
+    String wifiStatus = "[FAIL] Failed to connect to WiFi";
+    String timeStatus = "[SKIP] Skipped (WiFi not available)";
     String currentTime = "";
+    String formattedTime = "";
     bool wifiOk = false; // WiFi connection success flag
     bool timeOk = false; // API call success flag
 
@@ -354,7 +380,7 @@ void runProvisioningPortalUntilConfigured()
       if (WiFi.status() == WL_CONNECTED)
       {
         wifiOk = true;
-        wifiStatus = "✅ Connected to WiFi: " + cfg.ssid;
+        wifiStatus = "[OK] Connected to WiFi: " + cfg.ssid;
         Serial.print("Connected to ");
         Serial.println(cfg.ssid);
         break; // Connection successful, exit loop
@@ -367,9 +393,11 @@ void runProvisioningPortalUntilConfigured()
     {
       Serial.println("Testing API call...");
       HTTPClient http;
+      WiFiClientSecure secureClient;
       String apiUrl = buildTimeApiUrlForCity(cfg.city); // Build URL with city name
 
-      http.begin(apiUrl);
+      secureClient.setInsecure(); // Keep setup simple on embedded targets; avoids CA bundle management.
+      http.begin(secureClient, apiUrl);
       int httpCode = http.GET(); // Make HTTP request to time API
 
       // Check if API returned success (HTTP 200)
@@ -383,29 +411,34 @@ void runProvisioningPortalUntilConfigured()
         if (!error)
         {
           const char *datetime = doc["datetime"];
+          if (datetime == nullptr)
+          {
+            datetime = doc["dateTime"];
+          }
           if (datetime)
           {
             // API returned valid datetime
             currentTime = String(datetime);
+            formattedTime = formatDateTimeForDisplay(currentTime);
             timeOk = true;
-            timeStatus = "✅ Time API working for " + cfg.city;
+            timeStatus = "[OK] Time API working for " + cfg.city;
             Serial.print("Current time from API: ");
             Serial.println(currentTime);
           }
           else
           {
-            timeStatus = "❌ API response missing datetime field";
+            timeStatus = "[FAIL] API response missing datetime field";
           }
         }
         else
         {
-          timeStatus = "❌ Failed to parse API response";
+          timeStatus = "[FAIL] Failed to parse API response";
         }
       }
       else
       {
         // API error (wrong city, no internet, etc.)
-        timeStatus = "❌ API error (HTTP " + String(httpCode) + ")";
+        timeStatus = "[FAIL] API error (HTTP " + String(httpCode) + ")";
       }
 
       http.end(); // Close HTTP connection
@@ -413,15 +446,17 @@ void runProvisioningPortalUntilConfigured()
 
     // Build HTML confirmation page showing test results
     String html;
-    html += "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
-    html += "<meta http-equiv='refresh' content='5;url=/'>";
+    html += "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
     html += "<title>Setup Result</title>";
     html += "<style>"; // CSS styling for result page
     html += "body { font-family:sans-serif; max-width:480px; margin:24px auto; padding:0 12px; }";
     html += ".ok { color:#155724; background:#d4edda; padding:12px; border-radius:4px; margin:10px 0; }"; // Green for success
     html += ".fail { color:#721c24; background:#f8d7da; padding:12px; border-radius:4px; margin:10px 0; }"; // Red for error
     html += ".skip { color:#856404; background:#fff3cd; padding:12px; border-radius:4px; margin:10px 0; }"; // Yellow for skipped
-    html += ".time-display { background:#f0f0f0; padding:12px; border-radius:4px; font-family:monospace; margin:10px 0; }"; // Monospace for time display
+    html += ".time-display { background:#f0f0f0; padding:16px; border-radius:8px; margin:10px 0; text-align:center; }";
+    html += ".time-main { font-size:28px; font-weight:700; letter-spacing:1px; font-family:monospace; }";
+    html += ".time-meta { font-size:14px; color:#444; margin-top:6px; }";
+    html += ".action-btn { padding:12px 16px; width:100%; cursor:pointer; background:#2e7d32; color:white; border:none; border-radius:6px; font-size:16px; font-weight:bold; }";
     html += "</style>";
     html += "</head><body>";
     html += "<h2>Setup Confirmation</h2>";
@@ -444,52 +479,107 @@ void runProvisioningPortalUntilConfigured()
     html += "</div>";
 
     // Display the current time received from API (if available)
-    if (!currentTime.isEmpty())
+    if (!formattedTime.isEmpty())
     {
-      html += "<p><strong>Current Time from API:</strong></p>";
-      html += "<div class='time-display'>" + currentTime + "</div>";
+      html += "<p><strong>Detected Clock Time</strong></p>";
+      html += "<div class='time-display'>";
+      html += "<div class='time-main'>" + formattedTime + "</div>";
+      html += "<div class='time-meta'>Timezone: " + sanitizeCity(cfg.city) + "</div>";
+      html += "</div>";
     }
 
-    // If all tests passed: save config and reboot
+    // If all tests passed: ask user to confirm time before applying settings
     if (wifiOk && timeOk)
     {
-      // Success! All tests passed - configuration is valid
-      html += "<p style='color:green;font-size:18px;'><strong>✅ All checks passed!</strong></p>";
-      html += "<p>Your WiFi and timezone settings are valid. Saving to flash memory and rebooting...</p>";
-      server.send(200, "text/html", html);
-      delay(1000); // Give user time to read success message before reboot
+      pendingConfig = cfg;
+      pendingConfig.city = sanitizeCity(cfg.city);
+      pendingFormattedTime = formattedTime;
+      hasPendingConfig = true;
 
-      // Save WiFi SSID, password, and timezone to non-volatile flash storage (NVS)
-      // These settings will persist across reboots, power cycles, and factory resets
-      saveClockConfig(cfg);
-      delay(500);
-      // Reboot to apply new settings and start normal clock operation
-      ESP.restart();
+      html += "<p style='color:green;font-size:18px;'><strong>[OK] All checks passed!</strong></p>";
+      html += "<p>Please confirm the detected time. Settings are applied only after confirmation.</p>";
+      html += "<form method='POST' action='/apply'>";
+      html += "<button type='submit' class='action-btn'>Time Is Correct - Apply Settings</button>";
+      html += "</form>";
+      server.send(200, "text/html", html);
     }
     else
     {
       // At least one test failed - configuration NOT saved
       // User must correct their input and try again
-      html += "<p style='color:red;font-size:18px;'><strong>❌ Setup Failed</strong></p>";
+      html += "<p style='color:red;font-size:18px;'><strong>[FAIL] Setup Failed</strong></p>";
       html += "<p>Please check your entries:</p>";
       html += "<ul>";
       if (!wifiOk)
       {
-        html += "<li>❌ <strong>WiFi Connection Failed:</strong> Check SSID and password are correct</li>";
+        html += "<li><strong>WiFi Connection Failed:</strong> Check SSID and password are correct</li>";
       }
       if (!timeOk)
       {
-        html += "<li>❌ <strong>Time API Failed:</strong> Use format like 'Europe/Berlin' not just 'Berlin'</li>";
+        html += "<li><strong>Time API Failed:</strong> Use format like 'Europe/Berlin' not just 'Berlin'</li>";
       }
       html += "</ul>";
-      html += "<p><a href='/save' style='color:#4CAF50;text-decoration:none;font-weight:bold;'>← Go Back & Try Again</a></p>";
-      html += "<p><small>Page will refresh in 5 seconds...</small></p>";
+      html += "<p><a href='/save' style='color:#4CAF50;text-decoration:none;font-weight:bold;'>Go Back and Try Again</a></p>";
       server.send(200, "text/html", html);
       WiFi.mode(WIFI_AP); // Return to AP-only mode (stop attempting STA connection)
     }
   });
 
-  // Routes 4-9: Intercept OS-specific captive portal detection
+  // Route 4: Apply configuration after explicit user confirmation
+  // This route saves config, shuts down setup AP, switches to station mode, and reboots.
+  server.on("/apply", HTTP_POST, [&server]() {
+    if (!hasPendingConfig)
+    {
+      server.send(400, "text/plain", "No pending setup. Please run Save and Test first.");
+      return;
+    }
+
+    saveClockConfig(pendingConfig);
+    hasPendingConfig = false;
+
+    dnsServer.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(pendingConfig.ssid.c_str(), pendingConfig.password.c_str());
+
+    bool staOk = false;
+    const uint32_t started = millis();
+    while (millis() - started < 10000)
+    {
+      if (WiFi.status() == WL_CONNECTED)
+      {
+        staOk = true;
+        break;
+      }
+      delay(250);
+    }
+
+    String html;
+    html += "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
+    html += "<title>Applying Setup</title></head><body style='font-family:sans-serif;max-width:480px;margin:24px auto;padding:0 12px;'>";
+    html += "<h2>Applying Setup</h2>";
+    html += "<p>Confirmed time: <strong>" + pendingFormattedTime + "</strong></p>";
+    if (staOk)
+    {
+      html += "<p style='color:green;'><strong>[OK]</strong> Setup AP closed. Connected to new WiFi.</p>";
+      html += "<p>Device IP: <strong>" + WiFi.localIP().toString() + "</strong></p>";
+    }
+    else
+    {
+      html += "<p style='color:#a66b00;'><strong>[WARN]</strong> Setup AP closed. New WiFi connection not yet confirmed.</p>";
+      html += "<p>The saved settings will still be used after reboot.</p>";
+    }
+    html += "<p>Rebooting in <strong><span id='sec'>10</span></strong> seconds...</p>";
+    html += "<p>You can close this page now.</p>";
+    html += "<script>var s=10;var t=setInterval(function(){s--;document.getElementById('sec').textContent=s;if(s<=0){clearInterval(t);window.close();}},1000);</script>";
+    html += "</body></html>";
+    server.send(200, "text/html", html);
+
+    delay(10000);
+    ESP.restart();
+  });
+
+  // Routes 5-10: Intercept OS-specific captive portal detection
   // When devices connect to new WiFi, they automatically probe for internet connectivity
   // We intercept these probe requests and redirect to our setup page to auto-open the portal
   // This makes WiFi setup seamless - the login form opens automatically without user clicking!

@@ -22,16 +22,31 @@ TUBE_TYPE=ZM1000
 PROVISION_AP_NAME=NixiClockSetup
 WIFI_SYNC_SECONDS=3600
 MAX_SYNC_FAILS=3
-TIME_API_BASE=http://worldtimeapi.org/api/timezone/Europe
+TIME_API_BASE=http://worldtimeapi.org/api/timezone
 WIFI_SSID=YOUR_WIFI_SSID
 WIFI_PASSWORD=YOUR_WIFI_PASSWORD
-CITY=Berlin
+CITY=Europe/Berlin
 ```
+
+**Note:** `TIME_API_BASE` uses a global base URL (no continent prefix). Your `CITY` setting must use "Continent/City" format like "Europe/Berlin", "America/New_York", or "Asia/Tokyo".
 
 ## Prerequisites
 - [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/index.html) installed (or use the PlatformIO IDE extension in VS Code)
 - ESP32 board connected via USB
 - Working directory: project root (where `platformio.ini` lives)
+
+## Manual Boot Mode (Custom PCB)
+
+This PCB has **no auto-reset circuit** (no DTR/RTS → BOOT/EN wiring).  
+You must put the ESP32 into download mode manually before every flash:
+
+1. Hold down the **BOOT** button
+2. Press and release the **RST** button *(keep BOOT held)*
+3. Release the **BOOT** button
+4. ESP32 is now in download mode — run the upload command within a few seconds
+
+> `platformio.ini` already has `--before no_reset` so esptool will not try to auto-reset.  
+> The flash script (`scripts/flash_and_monitor.sh`) will prompt you to complete these steps before uploading.
 
 ## Commands
 
@@ -47,12 +62,12 @@ pio run -e esp-wrover-kit -t upload
 
 ### 3. Serial monitor (57600 baud, matches `monitor_speed` in platformio.ini)
 ```sh
-pio device monitor --baud 57600
+pio device monitor --baud 115200
 ```
 
 ### 4. Build, upload, then immediately open serial monitor
 ```sh
-pio run -e esp-wrover-kit -t upload && pio device monitor --baud 57600
+pio run -e esp-wrover-kit -t upload && pio device monitor --baud 115200
 ```
 
 ## Port Troubleshooting

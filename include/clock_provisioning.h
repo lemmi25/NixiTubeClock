@@ -11,9 +11,11 @@ struct ClockConfig
 
   bool isValid() const
   {
+    const bool tzLooksValid = city.indexOf('/') > 0 && !city.endsWith("/");
     return ssid.length() > 0 &&
            password.length() > 0 &&
            city.length() > 0 &&
+           tzLooksValid &&
            ssid != "YOUR_WIFI_SSID" &&
            password != "YOUR_WIFI_PASSWORD";
   }

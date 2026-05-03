@@ -9,7 +9,9 @@
 #include "RTClib.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <ArduinoOTA.h>
 #include <nixiDriver.h>
 #include <clock_variant_config.h>
 #include <clock_provisioning.h>
@@ -22,6 +24,18 @@
 #define MAX_SYNC_FAILS 3
 #endif
 
+#ifndef ENABLE_OTA
+#define ENABLE_OTA 0
+#endif
+
+#ifndef OTA_WINDOW_SECONDS
+#define OTA_WINDOW_SECONDS 180
+#endif
+
+#ifndef OTA_HOSTNAME
+#define OTA_HOSTNAME "NixiClock"
+#endif
+
 RTC_DS1307 rtc;
 nixiDriver ClockDisplay(4, 5, 2, CLOCK_IS_NUMITRON);
 HTTPClient http;
@@ -30,8 +44,99 @@ ClockConfig g_config;
 
 unsigned long lastSyncMs = 0;
 uint8_t syncFailures = 0;
+bool otaInitialized = false;
+bool otaWindowClosed = false;
+unsigned long otaStartMs = 0;
 
 const unsigned long syncIntervalMs = WIFI_SYNC_SECONDS * 1000UL;
+const unsigned long otaWindowMs = OTA_WINDOW_SECONDS * 1000UL;
+
+static bool isOtaWindowActive()
+{
+#if ENABLE_OTA
+  return otaInitialized && (millis() - otaStartMs < otaWindowMs);
+#else
+  return false;
+#endif
+}
+
+static bool connectWifiForOta(uint32_t timeoutMs)
+{
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    return true;
+  }
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(g_config.ssid.c_str(), g_config.password.c_str());
+
+  const unsigned long started = millis();
+  while (millis() - started < timeoutMs)
+  {
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      return true;
+    }
+    delay(250);
+  }
+
+  return false;
+}
+
+static void setupOtaWindow()
+{
+#if ENABLE_OTA
+  if (!connectWifiForOta(15000))
+  {
+    Serial.println("OTA disabled for this boot: WiFi connect failed");
+    return;
+  }
+
+  ArduinoOTA.setHostname(OTA_HOSTNAME);
+  ArduinoOTA.onStart([]() {
+    Serial.println("OTA update started");
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("OTA update finished");
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.print("OTA error: ");
+    Serial.println((int)error);
+  });
+  ArduinoOTA.begin();
+  otaInitialized = true;
+  otaStartMs = millis();
+  Serial.print("OTA ready at ");
+  Serial.print(WiFi.localIP());
+  Serial.print(" for ");
+  Serial.print(OTA_WINDOW_SECONDS);
+  Serial.println("s");
+#endif
+}
+
+static void handleOta()
+{
+#if ENABLE_OTA
+  if (!otaInitialized)
+  {
+    return;
+  }
+
+  if (isOtaWindowActive())
+  {
+    ArduinoOTA.handle();
+    return;
+  }
+
+  if (!otaWindowClosed)
+  {
+    otaWindowClosed = true;
+    Serial.println("OTA window closed; returning to normal sync behavior");
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  }
+#endif
+}
 
 static bool syncRtcFromInternet()
 {
@@ -41,7 +146,9 @@ static bool syncRtcFromInternet()
   }
 
   const String url = buildTimeApiUrlForCity(g_config.city);
-  http.begin(url);
+  WiFiClientSecure secureClient;
+  secureClient.setInsecure();
+  http.begin(secureClient, url);
   const int httpCode = http.GET();
 
   if (httpCode <= 0)
@@ -62,6 +169,10 @@ static bool syncRtcFromInternet()
   const char *date = doc["datetime"];
   if (date == nullptr)
   {
+    date = doc["dateTime"];
+  }
+  if (date == nullptr)
+  {
     return false;
   }
 
@@ -74,16 +185,19 @@ static bool syncRtcFromInternet()
 
   rtc.adjust(DateTime(year, month, day, hour, minute, second));
 
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
+  if (!isOtaWindowActive())
+  {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  }
 
   return true;
 }
 
 void setup()
 {
-  Serial.begin(57600);
-  delay(200);
+  Serial.begin(115200);
+  delay(3000); // Wait for serial monitor to connect before printing boot messages
   Serial.println("Boot profile: RTC_LOCAL");
   loadClockConfig(g_config);
   Serial.print("Configured city: ");
@@ -100,6 +214,8 @@ void setup()
     Serial.println("Config invalid, opening provisioning AP");
     runProvisioningPortalUntilConfigured();
   }
+
+  setupOtaWindow();
 
   rtc.begin();
 
@@ -125,6 +241,7 @@ void setup()
 void loop()
 {
   const unsigned long nowMs = millis();
+  handleOta();
   if (nowMs - lastSyncMs >= syncIntervalMs)
   {
     if (syncRtcFromInternet())
