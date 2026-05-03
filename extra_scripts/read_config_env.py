@@ -1,13 +1,24 @@
 Import("env")
 import os
 
-config_path = os.path.join(env["PROJECT_DIR"], "config.env")
+project_dir = env["PROJECT_DIR"]
+config_path = os.path.join(project_dir, "config.env")
+legacy_env_path = os.path.join(project_dir, ".env")
 defines = []
 
-if not os.path.isfile(config_path):
-    print("config.env not found - using built-in defaults")
+
+def _as_cpp_string_literal(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return '\\"{}\\"'.format(escaped)
+
+active_config_path = config_path
+if not os.path.isfile(active_config_path) and os.path.isfile(legacy_env_path):
+    active_config_path = legacy_env_path
+
+if not os.path.isfile(active_config_path):
+    print("config.env/.env not found - using built-in defaults")
 else:
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(active_config_path, "r", encoding="utf-8") as f:
         for raw_line in f:
             line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -23,7 +34,8 @@ for key, value in defines:
     if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
         env.Append(CPPDEFINES=[(key, int(value))])
     else:
-        env.Append(CPPDEFINES=[(key, value)])
+        # Non-numeric values must be emitted as C string literals.
+        env.Append(CPPDEFINES=[(key, _as_cpp_string_literal(value))])
 
 config_map = {k: v for k, v in defines}
 
@@ -47,6 +59,6 @@ elif selected_tube == "DA2000":
 else:
     print("Unknown TUBE_TYPE='{}' (valid: ZM1000, IN4, DA2000)".format(selected_tube))
 
-print("config.env loaded: {} key(s), HARDWARE_PROFILE={}, TUBE_TYPE={}".format(
-    len(defines), hardware_profile, selected_tube
+print("{} loaded: {} key(s), HARDWARE_PROFILE={}, TUBE_TYPE={}".format(
+    os.path.basename(active_config_path), len(defines), hardware_profile, selected_tube
 ))

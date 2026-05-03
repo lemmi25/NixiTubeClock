@@ -7,7 +7,6 @@ argument-hint: 'Optional: port override, e.g. --upload-port /dev/ttyUSB0'
 # Flash & Monitor — NixiTubeClock
 
 ## When to Use
-- Uploading new firmware to the LilyGo T5 v2.13 board
 - Uploading new firmware to the ESP32 clock board
 - Opening the serial monitor to watch boot logs or debug output
 - Verifying a build before or after flashing
@@ -20,9 +19,13 @@ Before build/flash, edit `config.env` (create from `config.env.example`):
 ```env
 HARDWARE_PROFILE=MASTER_NO_RTC
 TUBE_TYPE=ZM1000
+PROVISION_AP_NAME=NixiClockSetup
+WIFI_SYNC_SECONDS=3600
+MAX_SYNC_FAILS=3
+TIME_API_BASE=http://worldtimeapi.org/api/timezone/Europe
 WIFI_SSID=YOUR_WIFI_SSID
 WIFI_PASSWORD=YOUR_WIFI_PASSWORD
-TIME_API_URL=http://worldtimeapi.org/api/timezone/Europe/Berlin.json
+CITY=Berlin
 ```
 
 ## Prerequisites
@@ -72,7 +75,7 @@ sudo usermod -aG dialout $USER   # then log out and back in
 ## Expected Behavior by Hardware Profile
 
 **MASTER_NO_RTC**
-- Connects to WiFi and fetches time from `TIME_API_URL`
+- Connects to WiFi and fetches time from `TIME_API_BASE` + `CITY`
 - Displays hour/minute from internet response
 
 **RTC_LOCAL**
@@ -87,7 +90,7 @@ sudo usermod -aG dialout $USER   # then log out and back in
 | `Unknown HARDWARE_PROFILE=...` | Invalid profile value in config.env | Build uses no valid profile and fails at compile guard |
 | `Unknown TUBE_TYPE=...` | Invalid tube selection in config.env | Build has no matching tube mapping |
 
-See the `debug-deep-sleep` skill for hardware/profile mismatch diagnostics.
+See the `debug-clock-hardware` skill for full hardware diagnostics.
 
 ## Key Files
 - [platformio.ini](../../../platformio.ini) — build environment, script integration, source filter

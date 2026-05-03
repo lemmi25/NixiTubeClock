@@ -11,53 +11,57 @@
 #include <ArduinoJson.h>
 #include <nixiDriver.h>
 #include <clock_variant_config.h>
+#include <clock_provisioning.h>
 
-#ifndef WIFI_SSID
-#define WIFI_SSID "YOUR_SSID"
+#ifndef WIFI_SYNC_SECONDS
+#define WIFI_SYNC_SECONDS 3600
 #endif
 
-#ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "YOUR_PASSWORD"
+#ifndef MAX_SYNC_FAILS
+#define MAX_SYNC_FAILS 3
 #endif
-
-#ifndef TIME_API_URL
-#define TIME_API_URL "http://worldtimeapi.org/api/timezone/Europe/Berlin.json"
-#endif
-
-static const char *WORLD_TIME_URL = TIME_API_URL;
 
 nixiDriver ClockDisplay(4, 5, 2, CLOCK_IS_NUMITRON);
 HTTPClient http;
 StaticJsonDocument<2048> doc;
 
+ClockConfig g_config;
+
 unsigned long lastSyncMs = 0;
-const unsigned long syncIntervalMs = 5000;
+unsigned long lastRenderMs = 0;
 
-static bool connectWiFi()
+uint32_t syncedSecondsOfDay = 0;
+unsigned long syncedMillis = 0;
+bool hasTimeReference = false;
+uint8_t syncFailures = 0;
+
+const unsigned long syncIntervalMs = WIFI_SYNC_SECONDS * 1000UL;
+
+static uint32_t parseSecondsOfDay(const char *dateTime)
 {
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    return true;
-  }
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  for (int i = 0; i < 40; ++i)
-  {
-    if (WiFi.status() == WL_CONNECTED)
-    {
-      return true;
-    }
-    delay(250);
-  }
-
-  return false;
+  const uint8_t hh = (dateTime[11] - '0') * 10 + (dateTime[12] - '0');
+  const uint8_t mm = (dateTime[14] - '0') * 10 + (dateTime[15] - '0');
+  const uint8_t ss = (dateTime[17] - '0') * 10 + (dateTime[18] - '0');
+  return (uint32_t)hh * 3600UL + (uint32_t)mm * 60UL + (uint32_t)ss;
 }
 
-static bool fetchAndShowTime()
+static void showHourMinute(uint8_t hour, uint8_t minute)
 {
-  http.begin(WORLD_TIME_URL);
+  ClockDisplay.writeSegment(hour / 10, SEGMENT_1);
+  ClockDisplay.writeSegment(hour % 10, SEGMENT_2);
+  ClockDisplay.writeSegment(minute / 10, SEGMENT_3);
+  ClockDisplay.writeSegment(minute % 10, SEGMENT_4);
+}
+
+static bool syncFromInternet()
+{
+  if (!connectConfiguredWifi(g_config, 15000))
+  {
+    return false;
+  }
+
+  const String url = buildTimeApiUrlForCity(g_config.city);
+  http.begin(url);
   const int httpCode = http.GET();
 
   if (httpCode <= 0)
@@ -81,37 +85,82 @@ static bool fetchAndShowTime()
     return false;
   }
 
-  ClockDisplay.writeSegment(date[11] - '0', SEGMENT_1);
-  ClockDisplay.writeSegment(date[12] - '0', SEGMENT_2);
-  ClockDisplay.writeSegment(date[14] - '0', SEGMENT_3);
-  ClockDisplay.writeSegment(date[15] - '0', SEGMENT_4);
+  syncedSecondsOfDay = parseSecondsOfDay(date);
+  syncedMillis = millis();
+  hasTimeReference = true;
+
+  const uint8_t hour = syncedSecondsOfDay / 3600UL;
+  const uint8_t minute = (syncedSecondsOfDay % 3600UL) / 60UL;
+  showHourMinute(hour, minute);
+
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+
   return true;
 }
 
 void setup()
 {
   Serial.begin(57600);
+  delay(200);
+  Serial.println("Boot profile: MASTER_NO_RTC");
   ClockDisplay.off();
+
+  loadClockConfig(g_config);
+  Serial.print("Configured city: ");
+  Serial.println(g_config.city);
+
+  if (shouldForceProvisioning())
+  {
+    Serial.println("FORCE_PROVISIONING enabled");
+    runProvisioningPortalUntilConfigured();
+  }
+
+  if (!g_config.isValid())
+  {
+    Serial.println("Config invalid, opening provisioning AP");
+    runProvisioningPortalUntilConfigured();
+  }
 }
 
 void loop()
 {
-  if (!connectWiFi())
-  {
-    delay(1000);
-    return;
-  }
-
   const unsigned long now = millis();
-  if (now - lastSyncMs >= syncIntervalMs)
+
+  if (!hasTimeReference || (now - lastSyncMs >= syncIntervalMs))
   {
-    if (fetchAndShowTime())
+    if (syncFromInternet())
     {
       lastSyncMs = now;
+      syncFailures = 0;
+    }
+    else
+    {
+      syncFailures++;
+      if (!hasTimeReference)
+      {
+        Serial.println("Initial internet sync failed, opening provisioning AP");
+        runProvisioningPortalUntilConfigured();
+      }
+      if (syncFailures >= MAX_SYNC_FAILS)
+      {
+        Serial.println("Max sync failures reached, opening provisioning AP");
+        runProvisioningPortalUntilConfigured();
+      }
     }
   }
 
-  delay(50);
+  if (hasTimeReference && (now - lastRenderMs >= 200))
+  {
+    const uint32_t elapsed = (now - syncedMillis) / 1000UL;
+    const uint32_t secondsOfDay = (syncedSecondsOfDay + elapsed) % 86400UL;
+    const uint8_t hour = secondsOfDay / 3600UL;
+    const uint8_t minute = (secondsOfDay % 3600UL) / 60UL;
+    showHourMinute(hour, minute);
+    lastRenderMs = now;
+  }
+
+  delay(20);
 }
 
 #endif
