@@ -490,57 +490,71 @@ void runProvisioningPortalUntilConfigured()
   });
 
   // Routes 4-9: Intercept OS-specific captive portal detection
-  // When devices connect to new WiFi, they probe for internet by making specific requests
-  // We intercept these probes and redirect to our setup page to auto-open the portal
+  // When devices connect to new WiFi, they automatically probe for internet connectivity
+  // We intercept these probe requests and redirect to our setup page to auto-open the portal
+  // This makes WiFi setup seamless - the login form opens automatically without user clicking!
+  // Different operating systems use different detection methods:
 
   server.on("/generate_204", HTTP_GET, [&server]() {
-    // Android captive portal detection - expects 204 No Content, but redirect to /save instead
+    // Android captive portal detection endpoint
+    // Android devices expect 204 No Content, but redirect instead to show our setup page
     server.sendHeader("Location", "http://192.168.4.1/save");
     server.send(302, "text/plain", "");
   });
 
   server.on("/hotspot-detect.html", HTTP_GET, [&server]() {
-    // Apple iOS/macOS captive portal detection
+    // Apple iOS/macOS captive portal detection endpoint
+    // iPhone, iPad, and Mac probe this URL to detect login portals
     server.sendHeader("Location", "http://192.168.4.1/save");
     server.send(302, "text/plain", "");
   });
 
   server.on("/connectivity-check.html", HTTP_GET, [&server]() {
     // Windows 10/11 captive portal detection (version 1)
+    // Windows devices probe this URL for network connectivity
     server.sendHeader("Location", "http://192.168.4.1/save");
     server.send(302, "text/plain", "");
   });
 
   server.on("/ncsi.txt", HTTP_GET, [&server]() {
-    // Windows NCSI (Network Connectivity Status Indicator)
+    // Windows NCSI (Network Connectivity Status Indicator) version 1
+    // Older Windows versions use this endpoint
     server.sendHeader("Location", "http://192.168.4.1/save");
     server.send(302, "text/plain", "");
   });
 
   server.on("/fwlink/", HTTP_GET, [&server]() {
     // Windows NCSI version 2
+    // Newer Windows versions use this endpoint for connectivity checks
     server.sendHeader("Location", "http://192.168.4.1/save");
     server.send(302, "text/plain", "");
   });
 
   // Route 10: Catch-all for any other request (fallback captive portal redirect)
-  // Ensures any HTTP request gets redirected to setup page
+  // Any HTTP request to any URL on the AP gets redirected to the setup page
+  // This ensures maximum compatibility with different devices and browsers
   server.onNotFound([&server]() {
     server.sendHeader("Location", "http://192.168.4.1/save");
     server.send(302, "text/plain", "");
   });
 
-  // Start the web server (listen for HTTP requests)
+  // Start the web server (listen for incoming HTTP requests)
   server.begin();
 
-  // Main provisioning loop - continues until configuration is saved and device reboots
-  // This is an infinite loop that never returns
+  // Main provisioning loop - continues indefinitely until configuration is saved and device reboots
+  // This loop:
+  // - Processes incoming HTTP requests (form GET, POST, captive portal detections)
+  // - Processes incoming DNS requests (for captive portal spoofing)
+  // The function never returns - it runs until ESP.restart() is called after successful setup
   for (;;)
   {
-    // Process incoming HTTP requests (form GET, POST, captive portal detection, etc.)
+    // Process any pending HTTP requests from users accessing the setup form
+    // This handles form submissions, page views, and captive portal detection probes
     server.handleClient();
-    // Process incoming DNS requests (DNS spoofing for captive portal)
+    // Process any pending DNS requests
+    // Responds to all DNS queries with the clock's IP to trigger captive portal
+    // This makes the setup page open automatically on supported devices
     dnsServer.handleRequest();
-    delay(5); // Small delay to allow other tasks to run
+    delay(5); // Small delay to yield CPU to other tasks and prevent watchdog timer trigger
   }
 }
