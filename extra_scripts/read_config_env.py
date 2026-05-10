@@ -31,7 +31,12 @@ else:
 
 # Generic defines from config.env
 for key, value in defines:
-    if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+    lowered_value = value.strip().lower()
+    if lowered_value == "true":
+        env.Append(CPPDEFINES=[(key, 1)])
+    elif lowered_value == "false":
+        env.Append(CPPDEFINES=[(key, 0)])
+    elif value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
         env.Append(CPPDEFINES=[(key, int(value))])
     else:
         # Non-numeric values must be emitted as C string literals.
@@ -62,3 +67,15 @@ else:
 print("{} loaded: {} key(s), HARDWARE_PROFILE={}, TUBE_TYPE={}".format(
     os.path.basename(active_config_path), len(defines), hardware_profile, selected_tube
 ))
+
+# Touch clock_provisioning.cpp on every build so __DATE__ __TIME__ is always
+# fresh. This guarantees each new flash produces a unique firmware ID in NVS,
+# which automatically triggers the provisioning portal after every reflash.
+# When FORCE_PROVISIONING=false the portal is skipped anyway, so this is safe.
+import time as _time
+prov_src = os.path.join(project_dir, "src", "hardware", "clock_provisioning.cpp")
+if os.path.isfile(prov_src):
+    _time.sleep(0)  # no-op; touch via utime
+    now = _time.time()
+    os.utime(prov_src, (now, now))
+    print("Touched clock_provisioning.cpp -> fresh fw_id on this flash")

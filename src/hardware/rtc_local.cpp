@@ -197,15 +197,18 @@ static bool syncRtcFromInternet()
 void setup()
 {
   Serial.begin(115200);
+  Serial.setDebugOutput(true);
   delay(3000); // Wait for serial monitor to connect before printing boot messages
+  Serial.println("Serial monitor connected (RTC_LOCAL)");
   Serial.println("Boot profile: RTC_LOCAL");
+
   loadClockConfig(g_config);
   Serial.print("Configured city: ");
   Serial.println(g_config.city);
 
   if (shouldForceProvisioning())
   {
-    Serial.println("FORCE_PROVISIONING enabled");
+    Serial.println("Provisioning portal: opening AP");
     runProvisioningPortalUntilConfigured();
   }
 
@@ -235,6 +238,8 @@ void setup()
     runProvisioningPortalUntilConfigured();
   }
 
+  // Init display after provisioning so GPIO4 (PSRAM CS) isn't toggled
+  // while the provisioning web server is allocating heap memory.
   ClockDisplay.off();
 }
 

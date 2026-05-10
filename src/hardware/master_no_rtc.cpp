@@ -216,9 +216,11 @@ static bool syncFromInternet()
 void setup()
 {
   Serial.begin(115200);
+  Serial.setDebugOutput(true);
   delay(3000); // Wait for serial monitor to connect before printing boot messages
+  Serial.println("Serial monitor connected (MASTER_NO_RTC)");
   Serial.println("Boot profile: MASTER_NO_RTC");
-  ClockDisplay.off();
+  Serial.flush();
 
   loadClockConfig(g_config);
   Serial.print("Configured city: ");
@@ -226,7 +228,7 @@ void setup()
 
   if (shouldForceProvisioning())
   {
-    Serial.println("FORCE_PROVISIONING enabled");
+    Serial.println("Provisioning portal: opening AP");
     runProvisioningPortalUntilConfigured();
   }
 
@@ -235,6 +237,10 @@ void setup()
     Serial.println("Config invalid, opening provisioning AP");
     runProvisioningPortalUntilConfigured();
   }
+
+  // Init display after provisioning so GPIO4 (PSRAM CS) isn't toggled
+  // while the provisioning web server is allocating heap memory.
+  ClockDisplay.off();
 
   setupOtaWindow();
 }
@@ -273,7 +279,15 @@ void loop()
     const uint32_t secondsOfDay = (syncedSecondsOfDay + elapsed) % 86400UL;
     const uint8_t hour = secondsOfDay / 3600UL;
     const uint8_t minute = (secondsOfDay % 3600UL) / 60UL;
+    const uint8_t second = secondsOfDay % 60UL;
     showHourMinute(hour, minute);
+    // Print time to serial every second
+    static uint8_t lastSecond = 255;
+    if (second != lastSecond)
+    {
+      lastSecond = second;
+      Serial.printf("[TIME] %02u:%02u:%02u\n", hour, minute, second);
+    }
     lastRenderMs = now;
   }
 

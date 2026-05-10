@@ -30,6 +30,8 @@ CITY=Europe/Berlin
 
 **Note:** `TIME_API_BASE` uses a global base URL (no continent prefix). Your `CITY` setting must use "Continent/City" format like "Europe/Berlin", "America/New_York", or "Asia/Tokyo".
 
+**Fast path:** if `FORCE_PROVISIONING=0` in `config.env` and the SSID/password above are valid, the firmware will skip the hotspot and connect directly to WiFi at boot.
+
 ## Prerequisites
 - [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation/index.html) installed (or use the PlatformIO IDE extension in VS Code)
 - ESP32 board connected via USB

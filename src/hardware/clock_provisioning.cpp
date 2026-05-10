@@ -50,6 +50,7 @@
 
 // NVS (Non-Volatile Storage) namespace for saving persistent clock config
 static const char *PREF_NAMESPACE = "clockcfg";
+static const char *PREF_PROVISION_DONE_KEY = "prov_done";
 
 // Sanitize city name for use in API URL
 // Trims whitespace and replaces spaces with underscores (e.g., "New York" -> "New_York")
@@ -70,6 +71,8 @@ static void saveClockConfig(const ClockConfig &config)
   prefs.putString("ssid", config.ssid);
   prefs.putString("pass", config.password);
   prefs.putString("city", sanitizeCity(config.city));
+  // Mark provisioning as completed so FORCE_PROVISIONING can auto-disable after success.
+  prefs.putBool(PREF_PROVISION_DONE_KEY, true);
   prefs.end(); // Close and commit to flash
 }
 
@@ -159,10 +162,48 @@ String buildTimeApiUrlForCity(const String &city)
   return url;
 }
 
-// Check if provisioning portal should always be shown (for testing/debugging)
+// Decide whether the provisioning portal should run on this boot.
+//
+// FORCE_PROVISIONING=true  → portal if not yet done (prov_done=false in NVS)
+// FORCE_PROVISIONING=false → skip portal; use saved config directly
+//
+// Reflash detection: every new build has a unique __DATE__ __TIME__ stamp.
+// When a new firmware is detected, prov_done is cleared so the portal opens
+// automatically, regardless of what was saved before.
 bool shouldForceProvisioning()
 {
-  return FORCE_PROVISIONING == 1; // 1 = yes, 0 = only show if config invalid
+  // Step 1: detect new firmware via build-timestamp fingerprint.
+  // __DATE__ and __TIME__ change on every recompile, so a new flash always
+  // produces a different string here.
+  static const char *currentFwId = __DATE__ " " __TIME__;
+
+  Preferences prefs;
+  prefs.begin(PREF_NAMESPACE, false); // read-write to update fw_id when needed
+  const String storedFwId = prefs.getString("fw_id", "");
+
+  if (storedFwId != currentFwId)
+  {
+    // New firmware detected: store the new ID and clear the provisioning flag
+    // so the setup portal opens on this boot.
+    Serial.printf("[PROV] New firmware (prev: '%s') -> reset prov_done\n",
+                  storedFwId.c_str());
+    prefs.putString("fw_id", currentFwId);
+    prefs.putBool(PREF_PROVISION_DONE_KEY, false);
+    prefs.end();
+    return true; // always portal on fresh flash
+  }
+
+  // Step 2: check whether setup has been completed on this firmware.
+  const bool provDone = prefs.getBool(PREF_PROVISION_DONE_KEY, false);
+  prefs.end();
+
+  if (FORCE_PROVISIONING != 1)
+    return false; // portal disabled in config, skip it
+
+  // FORCE_PROVISIONING=true: always open portal, ignoring prov_done.
+  // Use FORCE_PROVISIONING=false to skip the portal after setup is done.
+  (void)provDone;
+  return true;
 }
 
 // Simple DNS server for captive portal
@@ -273,6 +314,48 @@ static String formatDateTimeForDisplay(const String &raw)
     return raw.substring(0, 10) + " " + raw.substring(11, 19);
   }
   return raw;
+}
+
+// Fetch the current API time for the given config and return both raw and formatted values.
+static bool fetchApiTimeForConfig(const ClockConfig &config, String &rawTime, String &formattedTime, int &httpCodeOut)
+{
+  HTTPClient http;
+  WiFiClientSecure secureClient;
+  String apiUrl = buildTimeApiUrlForCity(config.city);
+
+  secureClient.setInsecure();
+  http.begin(secureClient, apiUrl);
+  httpCodeOut = http.GET();
+
+  if (httpCodeOut != 200)
+  {
+    http.end();
+    return false;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  DynamicJsonDocument doc(512);
+  DeserializationError error = deserializeJson(doc, payload);
+  if (error)
+  {
+    return false;
+  }
+
+  const char *datetime = doc["datetime"];
+  if (datetime == nullptr)
+  {
+    datetime = doc["dateTime"];
+  }
+  if (datetime == nullptr)
+  {
+    return false;
+  }
+
+  rawTime = String(datetime);
+  formattedTime = formatDateTimeForDisplay(rawTime);
+  return true;
 }
 
 // Main provisioning portal function
@@ -534,49 +617,35 @@ void runProvisioningPortalUntilConfigured()
       return;
     }
 
+    // Save config to NVS (also sets prov_done=true so AP won't reopen after reboot)
     saveClockConfig(pendingConfig);
     hasPendingConfig = false;
 
-    dnsServer.stop();
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(pendingConfig.ssid.c_str(), pendingConfig.password.c_str());
+    Serial.println("[PROV] Config saved, rebooting to connect to saved WiFi...");
+    Serial.flush();
 
-    bool staOk = false;
-    const uint32_t started = millis();
-    while (millis() - started < 10000)
-    {
-      if (WiFi.status() == WL_CONNECTED)
-      {
-        staOk = true;
-        break;
-      }
-      delay(250);
-    }
-
+    // Send confirmation page WHILE the AP is still alive so the browser can receive it.
+    // After the reboot the AP is gone automatically - no manual teardown needed.
     String html;
-    html += "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
-    html += "<title>Applying Setup</title></head><body style='font-family:sans-serif;max-width:480px;margin:24px auto;padding:0 12px;'>";
-    html += "<h2>Applying Setup</h2>";
+    html += "<!doctype html><html><head><meta charset='utf-8'>";
+    html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+    html += "<title>Setup Complete</title></head>";
+    html += "<body style='font-family:sans-serif;max-width:480px;margin:24px auto;padding:0 12px;'>";
+    html += "<h2>Setup Complete</h2>";
+    html += "<p style='color:green;font-size:1.1em;'><strong>[OK]</strong> Settings saved successfully.</p>";
     html += "<p>Confirmed time: <strong>" + pendingFormattedTime + "</strong></p>";
-    if (staOk)
-    {
-      html += "<p style='color:green;'><strong>[OK]</strong> Setup AP closed. Connected to new WiFi.</p>";
-      html += "<p>Device IP: <strong>" + WiFi.localIP().toString() + "</strong></p>";
-    }
-    else
-    {
-      html += "<p style='color:#a66b00;'><strong>[WARN]</strong> Setup AP closed. New WiFi connection not yet confirmed.</p>";
-      html += "<p>The saved settings will still be used after reboot.</p>";
-    }
-    html += "<p>Rebooting in <strong><span id='sec'>10</span></strong> seconds...</p>";
-    html += "<p>You can close this page now.</p>";
-    html += "<script>var s=10;var t=setInterval(function(){s--;document.getElementById('sec').textContent=s;if(s<=0){clearInterval(t);window.close();}},1000);</script>";
+    html += "<p>The clock is now rebooting and will connect directly to <strong>" + pendingConfig.ssid + "</strong>.</p>";
+    html += "<p>The <strong>NixiClockSetup</strong> hotspot will disappear in a moment.</p>";
+    html += "<p style='color:#888;'>Rebooting in <strong><span id='sec'>3</span></strong> seconds...</p>";
+    html += "<script>var s=3;setInterval(function(){if(s>0){s--;document.getElementById('sec').textContent=s;}},1000);</script>";
     html += "</body></html>";
+    server.sendHeader("Connection", "close");
+    server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     server.send(200, "text/html", html);
+    server.handleClient(); // ensure response bytes are flushed to the browser
 
-    delay(10000);
-    ESP.restart();
+    delay(500); // give browser time to render the page before we vanish
+    ESP.restart(); // reboot tears down AP; prov_done=true prevents it reopening
   });
 
   // Routes 5-10: Intercept OS-specific captive portal detection
@@ -632,19 +701,20 @@ void runProvisioningPortalUntilConfigured()
   server.begin();
 
   // Main provisioning loop - continues indefinitely until configuration is saved and device reboots
-  // This loop:
-  // - Processes incoming HTTP requests (form GET, POST, captive portal detections)
-  // - Processes incoming DNS requests (for captive portal spoofing)
-  // The function never returns - it runs until ESP.restart() is called after successful setup
+  server.begin();
+
+  unsigned long lastHeartbeat = 0;
   for (;;)
   {
-    // Process any pending HTTP requests from users accessing the setup form
-    // This handles form submissions, page views, and captive portal detection probes
     server.handleClient();
-    // Process any pending DNS requests
-    // Responds to all DNS queries with the clock's IP to trigger captive portal
-    // This makes the setup page open automatically on supported devices
     dnsServer.handleRequest();
-    delay(5); // Small delay to yield CPU to other tasks and prevent watchdog timer trigger
+    // Print a heartbeat every 5s so serial monitor confirms the portal is alive
+    if (millis() - lastHeartbeat >= 5000)
+    {
+      lastHeartbeat = millis();
+      Serial.printf("[PROV] Portal running — connect to '%s' WiFi and open http://192.168.4.1/save\n",
+                    PROVISION_AP_NAME);
+    }
+    delay(5);
   }
 }
