@@ -22,7 +22,7 @@
 SHT21::SHT21 () {}
 
 void SHT21::begin(void){
-		
+    // Join default I2C bus configured by board support package.
 		Wire.begin();  
 				
 	}
@@ -42,6 +42,7 @@ uint16_t SHT21::readSHT21(uint8_t command)
 {
     uint16_t result;
 
+  // Trigger conversion, then poll for three-byte reply (MSB, LSB, CRC).
     Wire.beginTransmission(SHT21_ADDRESS);	
     Wire.write(command);					
     Wire.endTransmission();
@@ -52,7 +53,7 @@ uint16_t SHT21::readSHT21(uint8_t command)
       delay(1);
     }
 
-    // return result
+    // Drop status bits [1:0] per datasheet before conversion formula is applied.
     result = ((Wire.read()) << 8);
     result += Wire.read();
 	result &= ~0x0003;   // clear two low bits (status bits)

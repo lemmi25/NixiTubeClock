@@ -22,6 +22,7 @@ struct ClockConfig
 };
 
 void loadClockConfig(ClockConfig &config);
+bool applyStaNetworkConfig();
 bool connectConfiguredWifi(const ClockConfig &config, uint32_t timeoutMs);
 String buildTimeApiUrlForCity(const String &city);
 bool shouldForceProvisioning();

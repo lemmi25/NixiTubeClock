@@ -1,6 +1,9 @@
 #include <nixiDriver.h>
 #include <Shifty.h>
 
+// nixiDriver translates logical digits into shift-register bit patterns for
+// either 4-bit Nixie encoding or 8-bit Numitron segment encoding.
+
 nixiDriver::nixiDriver(uint8_t DS, uint8_t SH, uint8_t ST, bool numitron)
 {
     this->numitron = numitron;
@@ -22,6 +25,7 @@ uint8_t nixiDriver::writeSegment(uint8_t number, uint8_t segment)
 {
     if (this->numitron == false)
     {
+        // Nixie mode: each tube uses a 4-bit BCD-like pattern.
         bool truthTableNumber[4];
         nixiDriver::writeNumber(number, truthTableNumber);
         switch (segment)
@@ -58,6 +62,7 @@ uint8_t nixiDriver::writeSegment(uint8_t number, uint8_t segment)
     }
     else
     {
+        // Numitron mode: each tube uses 8 segment control bits.
         bool truthTableNumber[8];
         nixiDriver::writeNumber(number, truthTableNumber);
         switch (segment)
@@ -116,6 +121,7 @@ void nixiDriver::writeNumber(uint8_t number, bool *truthTableNumber)
 {
     if (this->numitron == false)
     {
+        // Nixie encoding table for digits 0..9; default case blanks tube.
         switch (number)
         {
 
@@ -190,6 +196,7 @@ void nixiDriver::writeNumber(uint8_t number, bool *truthTableNumber)
     }
     else
     {
+        // Numitron 7-segment-like lookup table for digits 0..9.
         switch (number)
         {
         case 0:
@@ -334,6 +341,7 @@ void nixiDriver::bootUp()
 
 void nixiDriver::off()
 {
+    // Digit 10 is used as "blank" in both mappings.
     nixiDriver::writeSegment(10, 1);
     nixiDriver::writeSegment(10, 2);
     nixiDriver::writeSegment(10, 3);

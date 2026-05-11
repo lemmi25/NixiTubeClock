@@ -1,38 +1,84 @@
 # ESP32 NixiTube OTA Clock
 
-<p align="center"> 
+<p align="center">
 <img src="https://github.com/lemmi25/NixiTubeClock/blob/master/images/Main.JPG">
 </p>
 
-**Please have a look around**
+## Hardware Profiles
 
-## Hardware Variants
+Firmware variants live in src/hardware:
 
-Firmware is split by hardware version in `src/hardware/`:
+- master_no_rtc.cpp
+	- No RTC module
+	- Time sync from internet API
+	- FreeRTOS tasks (display/buttons and WiFi/OTA)
+- rtc_local.cpp
+	- DS1307 RTC module
+	- Local time from RTC with optional internet sync
+	- Power and menu button handling in single-loop runtime
 
-- `master_no_rtc.cpp`: No RTC hardware, time comes from internet API.
-- `rtc_local.cpp`: RTC hardware, time is read from RTC and not pulled from internet.
+## Tube Types
 
-## Tube Variants
+Tube mapping is selected in include/clock_variant_config.h via config.env:
 
-Tube mapping is shared in `include/clock_variant_config.h` and supports:
+- ZM1000
+- IN4
+- DA2000 (numitron)
 
-- `ZM1000`
-- `IN4`
-- `DA2000` (numitron)
+## Main Configuration
 
-## Common Selection File
+All build-time options are read from config.env by extra_scripts/read_config_env.py.
+Each key in config.env becomes a C/C++ define automatically.
 
-Select both hardware and tube from `config.env`:
+Typical minimal setup:
 
 ```env
-HARDWARE_PROFILE=MASTER_NO_RTC
+HARDWARE_PROFILE=RTC_LOCAL
 TUBE_TYPE=ZM1000
+
+ENABLE_OTA=1
+OTA_IP=192.168.10.56
+OTA_PASSWORD=nixiclock
+
 WIFI_SSID=YOUR_WIFI_SSID
 WIFI_PASSWORD=YOUR_WIFI_PASSWORD
-TIME_API_URL=http://worldtimeapi.org/api/timezone/Europe/Berlin.json
+CITY=Europe/Berlin
+TIME_API_BASE=https://timeapi.io/api/Time/current/zone?timeZone=
 ```
 
-Use `config.env.example` as template and keep `config.env` local.
+## OTA Update
 
-Then build normally with PlatformIO.
+OTA is enabled with ENABLE_OTA=1.
+
+- OTA stays always available after WiFi is connected.
+- Flash command:
+
+```bash
+./scripts/ota_flash_monitor.sh
+```
+
+The script reads OTA_IP, OTA_PASSWORD, OTA_PORT from config.env, builds firmware, uploads over OTA, then opens serial monitor.
+
+## Buttons And LEDs
+
+Current runtime behavior:
+
+- Power button (BTN_ON / GPIO3): toggle hibernate and wake
+- Menu button (BTN_MODE / GPIO15): short/long press function handling
+- LED brightness level: LED_DIM
+	- master_no_rtc currently uses LED_DIM in firmware defaults
+	- rtc_local supports LED_DIM from config.env and includes boot LED intro animation
+
+## Build
+
+USB build/upload:
+
+```bash
+platformio run -e esp-wrover-kit
+```
+
+OTA build/upload environment:
+
+```bash
+platformio run -e esp-wrover-kit-ota
+```

@@ -14,6 +14,8 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <clock_provisioning.h>
+#include <nixiDriver.h>
+#include <clock_variant_config.h>
 
 // Default AP (Access Point) name that appears when clock needs WiFi configuration
 #ifndef PROVISION_AP_NAME
@@ -43,14 +45,49 @@
 #define TIME_API_BASE "https://timeapi.io/api/Time/current/zone?timeZone="
 #endif
 
-// Force provisioning portal on every boot (1=yes, 0=only if config invalid)
-#ifndef FORCE_PROVISIONING
-#define FORCE_PROVISIONING 0
+#ifndef WIFI_USE_STATIC_IP
+#define WIFI_USE_STATIC_IP 0
+#endif
+
+#ifndef WIFI_STATIC_IP
+#define WIFI_STATIC_IP ""
+#endif
+
+#ifndef WIFI_STATIC_GATEWAY
+#define WIFI_STATIC_GATEWAY ""
+#endif
+
+#ifndef WIFI_STATIC_SUBNET
+#define WIFI_STATIC_SUBNET ""
+#endif
+
+#ifndef WIFI_STATIC_DNS1
+#define WIFI_STATIC_DNS1 ""
+#endif
+
+#ifndef WIFI_STATIC_DNS2
+#define WIFI_STATIC_DNS2 ""
 #endif
 
 // NVS (Non-Volatile Storage) namespace for saving persistent clock config
 static const char *PREF_NAMESPACE = "clockcfg";
 static const char *PREF_PROVISION_DONE_KEY = "prov_done";
+
+static void renderProvisioningIndicator(nixiDriver &display, bool visible)
+{
+  // Blink 0000 while captive portal is active to make AP mode obvious on-device.
+  if (visible)
+  {
+    display.writeSegment(0, SEGMENT_1);
+    display.writeSegment(0, SEGMENT_2);
+    display.writeSegment(0, SEGMENT_3);
+    display.writeSegment(0, SEGMENT_4);
+  }
+  else
+  {
+    display.off();
+  }
+}
 
 // Sanitize city name for use in API URL
 // Trims whitespace and replaces spaces with underscores (e.g., "New York" -> "New_York")
@@ -71,7 +108,7 @@ static void saveClockConfig(const ClockConfig &config)
   prefs.putString("ssid", config.ssid);
   prefs.putString("pass", config.password);
   prefs.putString("city", sanitizeCity(config.city));
-  // Mark provisioning as completed so FORCE_PROVISIONING can auto-disable after success.
+  // Mark provisioning as completed.
   prefs.putBool(PREF_PROVISION_DONE_KEY, true);
   prefs.end(); // Close and commit to flash
 }
@@ -103,6 +140,51 @@ void loadClockConfig(ClockConfig &config)
   }
 }
 
+bool applyStaNetworkConfig()
+{
+#if WIFI_USE_STATIC_IP
+  IPAddress ip;
+  IPAddress gateway;
+  IPAddress subnet;
+  IPAddress dns1;
+  IPAddress dns2;
+
+  const bool valid =
+      ip.fromString(WIFI_STATIC_IP) &&
+      gateway.fromString(WIFI_STATIC_GATEWAY) &&
+      subnet.fromString(WIFI_STATIC_SUBNET) &&
+      dns1.fromString(WIFI_STATIC_DNS1);
+
+  if (!valid)
+  {
+    Serial.println("[NET] Static IP enabled but config is invalid. Check WIFI_STATIC_* in config.env");
+    return false;
+  }
+
+  const String dns2Str = WIFI_STATIC_DNS2;
+  const bool hasDns2 = dns2Str.length() > 0 && dns2.fromString(dns2Str);
+
+  bool ok;
+  if (hasDns2)
+    ok = WiFi.config(ip, gateway, subnet, dns1, dns2);
+  else
+    ok = WiFi.config(ip, gateway, subnet, dns1);
+
+  if (!ok)
+  {
+    Serial.println("[NET] Failed to apply static IP config");
+    return false;
+  }
+
+  Serial.printf("[NET] Static IP: %s  GW: %s  SN: %s\n",
+                ip.toString().c_str(), gateway.toString().c_str(), subnet.toString().c_str());
+#else
+  // Ensure DHCP mode when static IP is disabled.
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+#endif
+  return true;
+}
+
 // Attempt to connect to WiFi using saved credentials
 // Returns true if connection successful, false if timeout
 bool connectConfiguredWifi(const ClockConfig &config, uint32_t timeoutMs)
@@ -115,6 +197,10 @@ bool connectConfiguredWifi(const ClockConfig &config, uint32_t timeoutMs)
 
   // Switch to Station (STA) mode and connect with provided credentials
   WiFi.mode(WIFI_STA);
+  if (!applyStaNetworkConfig())
+  {
+    return false;
+  }
   WiFi.begin(config.ssid.c_str(), config.password.c_str());
 
   // Poll connection status for up to timeoutMs milliseconds
@@ -164,18 +250,20 @@ String buildTimeApiUrlForCity(const String &city)
 
 // Decide whether the provisioning portal should run on this boot.
 //
-// FORCE_PROVISIONING=true  → portal if not yet done (prov_done=false in NVS)
-// FORCE_PROVISIONING=false → skip portal; use saved config directly
-//
 // Reflash detection: every new build has a unique __DATE__ __TIME__ stamp.
 // When a new firmware is detected, prov_done is cleared so the portal opens
 // automatically, regardless of what was saved before.
 bool shouldForceProvisioning()
 {
-  // Step 1: detect new firmware via build-timestamp fingerprint.
-  // __DATE__ and __TIME__ change on every recompile, so a new flash always
-  // produces a different string here.
+  // Step 1: detect new firmware via build fingerprint.
+  // FW_BUILD_NONCE is injected by extra_scripts/read_config_env.py on every
+  // build invocation, making reflash detection robust even if sources did not
+  // change between uploads.
+#ifdef FW_BUILD_NONCE
+  static const char *currentFwId = FW_BUILD_NONCE;
+#else
   static const char *currentFwId = __DATE__ " " __TIME__;
+#endif
 
   Preferences prefs;
   prefs.begin(PREF_NAMESPACE, false); // read-write to update fw_id when needed
@@ -193,17 +281,10 @@ bool shouldForceProvisioning()
     return true; // always portal on fresh flash
   }
 
-  // Step 2: check whether setup has been completed on this firmware.
-  const bool provDone = prefs.getBool(PREF_PROVISION_DONE_KEY, false);
+  // Step 2: not a new firmware, do not force portal here.
+  // Runtime connection-failure logic in profile code decides fallback AP behavior.
   prefs.end();
-
-  if (FORCE_PROVISIONING != 1)
-    return false; // portal disabled in config, skip it
-
-  // FORCE_PROVISIONING=true: always open portal, ignoring prov_done.
-  // Use FORCE_PROVISIONING=false to skip the portal after setup is done.
-  (void)provDone;
-  return true;
+  return false;
 }
 
 // Simple DNS server for captive portal
@@ -364,6 +445,8 @@ static bool fetchApiTimeForConfig(const ClockConfig &config, String &rawTime, St
 // This function blocks until configuration is complete
 void runProvisioningPortalUntilConfigured()
 {
+  static nixiDriver provisioningDisplay(4, 5, 2, CLOCK_IS_NUMITRON);
+
   // Setup WiFi in AP (Access Point) mode - create a hotspot
   WiFi.mode(WIFI_AP);
   WiFi.softAP(PROVISION_AP_NAME); // Create open AP (no password)
@@ -390,7 +473,6 @@ void runProvisioningPortalUntilConfigured()
   });
 
   // Route 2: Setup form (/save GET) - Display the HTML configuration form
-  // Route 2: Setup form (/save GET) - Display the HTML configuration form
   // Users see this form when they first connect to the NixiClock WiFi hotspot
   server.on("/save", HTTP_GET, [&server]() {
     // Build HTML form for user input with helpful instructions and examples
@@ -399,6 +481,13 @@ void runProvisioningPortalUntilConfigured()
     html += "<title>NixiClock Setup</title></head><body style='font-family:sans-serif;max-width:480px;margin:24px auto;padding:0 12px;'>";
     html += "<h2>NixiClock WiFi Setup</h2>";
     html += "<p>Configure your clock to connect to your WiFi network and set your timezone.</p>";
+#if WIFI_USE_STATIC_IP
+    html += "<div style='background:#e3f2fd;padding:12px;border-radius:4px;margin-bottom:20px;border-left:4px solid #2196F3;'>";
+    html += "<strong>📍 Clock Network Address:</strong><br>";
+    html += "After setup, access your clock at:<br>";
+    html += "<code style='background:#f5f5f5;padding:4px 6px;font-size:14px;font-weight:bold;font-family:monospace;'>" + String(WIFI_STATIC_IP) + "</code>";
+    html += "</div>";
+#endif
     html += "<form method='POST' action='/save'>";
     html += "<label><strong>WiFi SSID</strong> (your router/network name)</label><br>";
     html += "<input name='ssid' placeholder='e.g., MyHomeWiFi' style='width:100%;padding:8px;margin-bottom:10px;box-sizing:border-box;' required><br>";
@@ -446,6 +535,11 @@ void runProvisioningPortalUntilConfigured()
     // Test WiFi connection with provided credentials
     Serial.println("Testing WiFi connection...");
     WiFi.mode(WIFI_AP_STA); // Enable both AP and STA (station) modes
+    if (!applyStaNetworkConfig())
+    {
+      server.send(400, "text/plain", "Error: Static IP config invalid. Check WIFI_STATIC_* in config.env");
+      return;
+    }
     WiFi.begin(cfg.ssid.c_str(), cfg.password.c_str()); // Connect to user's router
 
     // Status messages to display on confirmation page
@@ -456,9 +550,9 @@ void runProvisioningPortalUntilConfigured()
     bool wifiOk = false; // WiFi connection success flag
     bool timeOk = false; // API call success flag
 
-    // Wait up to 10 seconds for WiFi to connect
+    // Wait up to 8 seconds for WiFi to connect
     uint32_t wifiStart = millis();
-    while (millis() - wifiStart < 10000)
+    while (millis() - wifiStart < 8000)
     {
       if (WiFi.status() == WL_CONNECTED)
       {
@@ -480,6 +574,9 @@ void runProvisioningPortalUntilConfigured()
       String apiUrl = buildTimeApiUrlForCity(cfg.city); // Build URL with city name
 
       secureClient.setInsecure(); // Keep setup simple on embedded targets; avoids CA bundle management.
+      secureClient.setTimeout(5000);
+      http.setConnectTimeout(5000);
+      http.setTimeout(7000);
       http.begin(secureClient, apiUrl);
       int httpCode = http.GET(); // Make HTTP request to time API
 
@@ -636,6 +733,17 @@ void runProvisioningPortalUntilConfigured()
     html += "<p>Confirmed time: <strong>" + pendingFormattedTime + "</strong></p>";
     html += "<p>The clock is now rebooting and will connect directly to <strong>" + pendingConfig.ssid + "</strong>.</p>";
     html += "<p>The <strong>NixiClockSetup</strong> hotspot will disappear in a moment.</p>";
+    
+#if ENABLE_OTA
+    html += "<div style='background:#f0f8ff;border:1px solid #87ceeb;border-radius:4px;padding:12px;margin:12px 0;'>";
+    html += "<h3 style='margin-top:0;color:#0066cc;'>OTA Update Available</h3>";
+  html += "<p>After the clock connects to WiFi, OTA (Over-The-Air) firmware updates will stay <strong>always available</strong>.</p>";
+    html += "<p><strong>Clock IP Address:</strong> <code style='background:#e8f5ff;padding:2px 4px;font-family:monospace;'>" + String(OTA_IP) + "</code></p>";
+    html += "<p>Use this command to update wirelessly:</p>";
+    html += "<code style='background:#fff;border:1px solid #ccc;padding:6px;border-radius:3px;display:block;font-size:0.85em;overflow-x:auto;'>./scripts/ota_flash_monitor.sh --ip " + String(OTA_IP) + "</code>";
+    html += "</div>";
+#endif
+
     html += "<p style='color:#888;'>Rebooting in <strong><span id='sec'>3</span></strong> seconds...</p>";
     html += "<script>var s=3;setInterval(function(){if(s>0){s--;document.getElementById('sec').textContent=s;}},1000);</script>";
     html += "</body></html>";
@@ -704,10 +812,20 @@ void runProvisioningPortalUntilConfigured()
   server.begin();
 
   unsigned long lastHeartbeat = 0;
+  unsigned long lastBlinkToggle = 0;
+  bool blinkVisible = false;
   for (;;)
   {
     server.handleClient();
     dnsServer.handleRequest();
+
+    if (millis() - lastBlinkToggle >= 500)
+    {
+      lastBlinkToggle = millis();
+      blinkVisible = !blinkVisible;
+      renderProvisioningIndicator(provisioningDisplay, blinkVisible);
+    }
+
     // Print a heartbeat every 5s so serial monitor confirms the portal is alive
     if (millis() - lastHeartbeat >= 5000)
     {

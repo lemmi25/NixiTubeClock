@@ -109,6 +109,7 @@ check_port() {
 do_build() {
   banner "Building firmware (env: $ENV)"
   cd "$PROJECT_ROOT"
+  "$PIO" run -e "$ENV" -t clean
   "$PIO" run -e "$ENV"
 }
 

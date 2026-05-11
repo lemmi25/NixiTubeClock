@@ -1,5 +1,6 @@
 Import("env")
 import os
+import time as _time
 
 project_dir = env["PROJECT_DIR"]
 config_path = os.path.join(project_dir, "config.env")
@@ -68,11 +69,16 @@ print("{} loaded: {} key(s), HARDWARE_PROFILE={}, TUBE_TYPE={}".format(
     os.path.basename(active_config_path), len(defines), hardware_profile, selected_tube
 ))
 
+# Unique build nonce for reliable "new firmware" detection in NVS.
+# This changes on every build invocation, even when source files are unchanged.
+build_nonce = str(_time.time_ns())
+env.Append(CPPDEFINES=[("FW_BUILD_NONCE", _as_cpp_string_literal(build_nonce))])
+print("FW_BUILD_NONCE={}".format(build_nonce))
+
 # Touch clock_provisioning.cpp on every build so __DATE__ __TIME__ is always
 # fresh. This guarantees each new flash produces a unique firmware ID in NVS,
 # which automatically triggers the provisioning portal after every reflash.
-# When FORCE_PROVISIONING=false the portal is skipped anyway, so this is safe.
-import time as _time
+# This keeps legacy __DATE__/__TIME__ fingerprints fresh as a fallback.
 prov_src = os.path.join(project_dir, "src", "hardware", "clock_provisioning.cpp")
 if os.path.isfile(prov_src):
     _time.sleep(0)  # no-op; touch via utime
